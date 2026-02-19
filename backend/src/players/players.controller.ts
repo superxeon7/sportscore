@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { PlayersService } from './players.service';
@@ -20,6 +21,24 @@ export class PlayersController {
   constructor(private readonly playersService: PlayersService) { }
 
   @Public()
+  @Get('players')
+  findAllPublic(
+    @Query('search') search?: string,
+    @Query('teamId') teamId?: string,
+    @Query('position') position?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.playersService.findAllPublic({
+      search,
+      teamId,
+      position,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? Math.min(parseInt(limit, 10), 50) : 24,
+    });
+  }
+
+  @Public()
   @Get('teams/:teamId/players')
   findAllByTeam(
     @Param('teamId', ParseUUIDPipe) teamId: string,
@@ -27,6 +46,12 @@ export class PlayersController {
     @CurrentUser('role') userRole: UserRole,
   ) {
     return this.playersService.findAllByTeam(teamId, userId, userRole);
+  }
+
+  @Public()
+  @Get('players/:id/profile')
+  getPublicProfile(@Param('id', ParseUUIDPipe) id: string) {
+    return this.playersService.getPublicProfile(id);
   }
 
   @Get('players/:id')

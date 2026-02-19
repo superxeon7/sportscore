@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api/client';
 import { Match, MatchEvent, MatchStatus } from '@/lib/types';
@@ -170,7 +170,16 @@ function TeamLogo({
 
 export default function MatchDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const matchId = params.id as string;
+
+  const handleBack = useCallback(() => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/matches');
+    }
+  }, [router]);
 
   const [match, setMatch] = useState<Match | null>(null);
   const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([]);
@@ -246,12 +255,12 @@ export default function MatchDetailPage() {
         </div>
         <h2 className="text-xl font-semibold text-slate-100 mb-2">Match Not Found</h2>
         <p className="text-slate-400 mb-6">{error || 'The match you are looking for does not exist.'}</p>
-        <Link
-          href="/matches"
+        <button
+          onClick={handleBack}
           className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors"
         >
-          ← Back to Matches
-        </Link>
+          ← Kembali
+        </button>
       </div>
     );
   }
@@ -475,15 +484,15 @@ export default function MatchDetailPage() {
     <div className="min-h-screen pb-12">
       {/* ──── Back nav ──── */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4">
-        <Link
-          href="/matches"
+        <button
+          onClick={handleBack}
           className="inline-flex items-center text-slate-400 hover:text-slate-200 text-sm transition-colors group"
         >
           <svg className="w-4 h-4 mr-1.5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Matches
-        </Link>
+          Kembali
+        </button>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════

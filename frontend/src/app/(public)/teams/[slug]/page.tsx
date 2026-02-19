@@ -10,7 +10,7 @@ import InitialsAvatar from '@/components/ui/initials-avatar';
 import {
   ArrowLeft, MapPin, Calendar, Users, Trophy, Swords,
   Search, X, Shield, Star, User, Flag, Briefcase,
-  ChevronRight, ChevronDown, Target, Award, Zap,
+  ChevronRight, ChevronDown, Target, Award, Zap, ExternalLink,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────
@@ -460,49 +460,63 @@ export default function TeamDetailPage() {
                             {group.players.map((player) => {
                               const isSelected = selectedPlayer?.id === player.id;
                               return (
-                                <button
+                                <div
                                   key={player.id}
-                                  onClick={() => handlePlayerSelect(player)}
-                                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all group ${isSelected
+                                  className={`flex items-center transition-all group/row ${isSelected
                                       ? 'bg-emerald-500/[0.08] border-l-2 border-l-emerald-400'
                                       : 'hover:bg-white/[0.03] border-l-2 border-l-transparent'
                                     }`}
                                 >
-                                  {/* Jersey Number */}
-                                  <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-                                    <span className="text-xs font-bold text-white">
-                                      {player.jerseyNumber ?? '-'}
+                                  {/* Select player button (panel) */}
+                                  <button
+                                    onClick={() => handlePlayerSelect(player)}
+                                    className="flex-1 flex items-center gap-3 px-4 py-3 text-left min-w-0"
+                                  >
+                                    {/* Jersey Number */}
+                                    <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0">
+                                      <span className="text-xs font-bold text-white">
+                                        {player.jerseyNumber ?? '-'}
+                                      </span>
+                                    </div>
+
+                                    {/* Photo */}
+                                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 bg-white/[0.04]">
+                                      {player.photoUrl ? (
+                                        <Image src={player.photoUrl} alt={player.fullName} width={36} height={36} className="w-full h-full object-cover" unoptimized />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          <User className="w-4 h-4 text-slate-600" />
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Name + Position */}
+                                    <div className="flex-1 min-w-0">
+                                      <span className={`text-sm font-semibold truncate block ${isSelected ? 'text-emerald-400' : 'text-white'}`}>
+                                        {player.fullName}
+                                      </span>
+                                      {player.position && (
+                                        <span className="text-[11px] text-slate-500">{player.position}</span>
+                                      )}
+                                    </div>
+
+                                    {/* Position badge */}
+                                    <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getPositionColor(player.position)}`}>
+                                      {getPositionShort(player.position)}
                                     </span>
-                                  </div>
 
-                                  {/* Photo */}
-                                  <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 bg-white/[0.04]">
-                                    {player.photoUrl ? (
-                                      <Image src={player.photoUrl} alt={player.fullName} width={36} height={36} className="w-full h-full object-cover" unoptimized />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center">
-                                        <User className="w-4 h-4 text-slate-600" />
-                                      </div>
-                                    )}
-                                  </div>
+                                    <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-colors ${isSelected ? 'text-emerald-400' : 'text-slate-600 group-hover/row:text-slate-400'}`} />
+                                  </button>
 
-                                  {/* Name + Position */}
-                                  <div className="flex-1 min-w-0">
-                                    <span className={`text-sm font-semibold truncate block ${isSelected ? 'text-emerald-400' : 'text-white'}`}>
-                                      {player.fullName}
-                                    </span>
-                                    {player.position && (
-                                      <span className="text-[11px] text-slate-500">{player.position}</span>
-                                    )}
-                                  </div>
-
-                                  {/* Position badge */}
-                                  <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getPositionColor(player.position)}`}>
-                                    {getPositionShort(player.position)}
-                                  </span>
-
-                                  <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-colors ${isSelected ? 'text-emerald-400' : 'text-slate-600 group-hover:text-slate-400'}`} />
-                                </button>
+                                  {/* Profile link icon */}
+                                  <Link
+                                    href={`/player/${player.id}`}
+                                    className="pr-3 pl-1 self-stretch flex items-center opacity-0 group-hover/row:opacity-100 transition-opacity"
+                                    title="Lihat profil pemain"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                                  </Link>
+                                </div>
                               );
                             })}
                           </div>
@@ -822,7 +836,10 @@ function StatCard({ type, player, value }: StatCardProps) {
   const countLabel = isScorer ? 'Gol' : 'Assist';
 
   return (
-    <div className={`relative overflow-hidden flex items-center gap-3 rounded-xl border ${accentBorder} bg-gradient-to-r ${accentBg} bg-[#0a1020] px-3 py-2.5 min-w-0 w-full sm:w-auto`}>
+    <Link
+      href={`/player/${player.id}`}
+      className={`relative overflow-hidden flex items-center gap-3 rounded-xl border ${accentBorder} bg-gradient-to-r ${accentBg} bg-[#0a1020] px-3 py-2.5 min-w-0 w-full sm:w-auto hover:brightness-110 transition-all group`}
+    >
       {/* Photo */}
       <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 bg-white/[0.04] border border-white/[0.08]">
         {player.photoUrl ? (
@@ -842,7 +859,7 @@ function StatCard({ type, player, value }: StatCardProps) {
             {label}
           </span>
         </div>
-        <p className="text-sm font-bold text-white truncate leading-tight">{player.fullName}</p>
+        <p className="text-sm font-bold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{player.fullName}</p>
         <p className="text-[11px] text-slate-500">
           {player.jerseyNumber != null ? `#${player.jerseyNumber}` : ''}
         </p>
@@ -853,7 +870,7 @@ function StatCard({ type, player, value }: StatCardProps) {
         <div className={`text-2xl font-black ${accentText} leading-none`}>{value}</div>
         <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{countLabel}</div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -865,7 +882,10 @@ interface CombinedStatCardProps {
 
 function CombinedStatCard({ player, goals, assists }: CombinedStatCardProps) {
   return (
-    <div className="relative overflow-hidden flex items-center gap-3 rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-500/10 to-transparent bg-[#0a1020] px-3 py-2.5 w-full sm:w-auto">
+    <Link
+      href={`/player/${player.id}`}
+      className="relative overflow-hidden flex items-center gap-3 rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-500/10 to-transparent bg-[#0a1020] px-3 py-2.5 w-full sm:w-auto hover:brightness-110 transition-all group"
+    >
       {/* Photo */}
       <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 bg-white/[0.04] border border-white/[0.08]">
         {player.photoUrl ? (
@@ -889,7 +909,7 @@ function CombinedStatCard({ player, goals, assists }: CombinedStatCardProps) {
             Top Assist Tim
           </span>
         </div>
-        <p className="text-sm font-bold text-white truncate leading-tight">{player.fullName}</p>
+        <p className="text-sm font-bold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{player.fullName}</p>
         <p className="text-[11px] text-slate-500">
           {player.jerseyNumber != null ? `#${player.jerseyNumber}` : ''}
         </p>
@@ -906,7 +926,7 @@ function CombinedStatCard({ player, goals, assists }: CombinedStatCardProps) {
           <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Assist</div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -971,24 +991,14 @@ function PlayerDetailCard({ player }: { player: Player }) {
         ))}
       </div>
 
-      {/* Stats Placeholder (radar style) */}
-      <div className="glass-card p-4">
-        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Statistik Pemain</h4>
-        <div className="space-y-2.5">
-          {[
-            { label: 'Gol', value: '-' },
-            { label: 'Assist', value: '-' },
-            { label: 'Penampilan', value: '-' },
-            { label: 'Kartu Kuning', value: '-' },
-            { label: 'Kartu Merah', value: '-' },
-          ].map((stat) => (
-            <div key={stat.label} className="flex items-center justify-between">
-              <span className="text-xs text-slate-400">{stat.label}</span>
-              <span className="text-xs font-bold text-slate-500">{stat.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Profile link */}
+      <Link
+        href={`/player/${player.id}`}
+        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-bold hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all group"
+      >
+        <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+        Lihat Profil Lengkap
+      </Link>
     </div>
   );
 }

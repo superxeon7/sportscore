@@ -10,7 +10,9 @@ import { Menu, X, ChevronDown, User, LayoutDashboard, LogOut, Trophy } from 'luc
 const navLinks = [
   { href: '/', label: 'Beranda' },
   { href: '/events', label: 'Acara' },
+  { href: '/matches', label: 'Pertandingan' },
   { href: '/teams', label: 'Tim' },
+  { href: '/players', label: 'Pemain' },
   { href: '/about', label: 'Tentang' },
 ];
 

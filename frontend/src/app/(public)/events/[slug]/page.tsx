@@ -76,6 +76,7 @@ interface TopScorer {
   goals: number;
 }
 
+
 interface TeamItem {
   teamId: string;
   teamName: string;
@@ -639,7 +640,65 @@ function PertandinganTab({
   );
 }
 
-// ─── Tab: Top Skor ────────────────────────────────────────────────────────────
+// ─── Tab: Top Pemain ──────────────────────────────────────────────────────────
+
+function PlayerAvatar({ photoUrl, name, size = 'md' }: {
+  photoUrl?: string | null;
+  name: string;
+  size?: 'sm' | 'md' | 'lg';
+}) {
+  const sizeClass = size === 'lg' ? 'w-20 h-20' : size === 'md' ? 'w-10 h-10' : 'w-8 h-8';
+  const textClass = size === 'lg' ? 'text-xl' : size === 'md' ? 'text-sm' : 'text-[10px]';
+  const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+  return (
+    <div className={`${sizeClass} rounded-xl overflow-hidden bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0`}>
+      {photoUrl ? (
+        <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
+      ) : (
+        <span className={`${textClass} font-black text-slate-400`}>{initials}</span>
+      )}
+    </div>
+  );
+}
+
+function TopOneCard({ scorer }: { scorer: TopScorer }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent bg-[#0a1020] p-5 shadow-xl shadow-emerald-500/10 flex flex-col items-center text-center">
+      <div className="text-2xl mb-2 select-none">👑</div>
+
+      {/* Photo */}
+      <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-emerald-400/50 ring-4 ring-emerald-400/20 mb-3 flex-shrink-0">
+        {scorer.photoUrl ? (
+          <img src={scorer.photoUrl} alt={scorer.playerName} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-white/[0.05]">
+            <span className="text-2xl font-black text-slate-400">
+              {scorer.playerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-emerald-500/15 border-emerald-500/30 text-emerald-300 text-[10px] font-bold uppercase tracking-wide mb-2">
+        ⚽ Top Scorer
+      </span>
+
+      <p className="font-black text-white text-base leading-tight">{scorer.playerName}</p>
+
+      <div className="flex items-center justify-center gap-1.5 mt-1">
+        {scorer.teamLogoUrl && (
+          <img src={scorer.teamLogoUrl} alt="" className="w-4 h-4 rounded-sm object-cover flex-shrink-0" />
+        )}
+        <span className="text-xs text-slate-400">{scorer.teamShortName || scorer.teamName}</span>
+      </div>
+
+      <div className="mt-3">
+        <div className="text-4xl font-black text-emerald-400 leading-none">{scorer.goals}</div>
+        <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">Gol</div>
+      </div>
+    </div>
+  );
+}
 
 function TopSkorTab({ categories }: { categories: CategoryData[] }) {
   if (categories.length === 0) {
@@ -655,61 +714,61 @@ function TopSkorTab({ categories }: { categories: CategoryData[] }) {
           {cat.topScorers.length === 0 ? (
             <EmptyState message="Belum ada gol tercatat." />
           ) : (
-            <div className="glass-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/[0.06]">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-10">#</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Pemain</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 hidden sm:table-cell">Tim</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 w-16">Gol</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cat.topScorers.map((scorer, idx) => (
-                    <tr key={scorer.playerId} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-                      <td className="px-4 py-3 text-slate-500 text-xs font-medium">{idx + 1}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {scorer.photoUrl ? (
-                              <img src={scorer.photoUrl} alt={scorer.playerName} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-[10px] font-bold text-slate-400">
-                                {scorer.playerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-white text-sm">{scorer.playerName}</p>
-                            <p className="text-[10px] text-slate-500 sm:hidden">{scorer.teamName}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {scorer.teamLogoUrl ? (
-                              <img src={scorer.teamLogoUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-[7px] font-bold text-slate-400">
-                                {(scorer.teamShortName || scorer.teamName).substring(0, 2).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-slate-300 text-xs">{scorer.teamName}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="inline-flex items-center gap-1 font-bold text-white">
-                          <Target className="w-3.5 h-3.5 text-emerald-400" />
-                          {scorer.goals}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              {/* #1 — special card */}
+              <TopOneCard scorer={cat.topScorers[0]} />
+
+              {/* Rank 2+ — table */}
+              {cat.topScorers.length > 1 && (
+                <div className="glass-card overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                        <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-8">#</th>
+                        <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pemain</th>
+                        <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Tim</th>
+                        <th className="px-4 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider w-16">Gol</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cat.topScorers.slice(1).map((scorer, idx) => (
+                        <tr key={scorer.playerId} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                          <td className="px-4 py-3 text-slate-600 text-xs font-bold">{idx + 2}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <PlayerAvatar photoUrl={scorer.photoUrl} name={scorer.playerName} size="sm" />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-white text-sm truncate">{scorer.playerName}</p>
+                                <p className="text-[10px] text-slate-500 sm:hidden truncate">{scorer.teamName}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <div className="flex items-center gap-1.5">
+                              {scorer.teamLogoUrl ? (
+                                <img src={scorer.teamLogoUrl} alt="" className="w-4 h-4 rounded-sm object-cover flex-shrink-0" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-sm bg-white/[0.06] flex items-center justify-center flex-shrink-0">
+                                  <span className="text-[7px] font-bold text-slate-500">
+                                    {(scorer.teamShortName || scorer.teamName).substring(0, 2).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                              <span className="text-slate-300 text-xs truncate">{scorer.teamName}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center gap-1 font-black text-white">
+                              <Target className="w-3.5 h-3.5 text-emerald-400" />
+                              {scorer.goals}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
