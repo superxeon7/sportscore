@@ -230,6 +230,7 @@ export default function EventManagementPage() {
   });
   const [savingMatch, setSavingMatch] = useState(false);
   const [publishingMatchId, setPublishingMatchId] = useState<string | null>(null);
+  const [bulkPublishing, setBulkPublishing] = useState(false);
 
   // Publish event state
   const [publishModalOpen, setPublishModalOpen] = useState(false);
@@ -625,6 +626,27 @@ export default function EventManagementPage() {
       toast.error(message);
     } finally {
       setPublishingMatchId(null);
+    }
+  };
+
+  const handleBulkPublish = async () => {
+    const draftCount = matches.filter((m) => m.status === 'DRAFT').length;
+    if (draftCount === 0) {
+      toast.error('Tidak ada pertandingan DRAFT untuk dipublish');
+      return;
+    }
+    setBulkPublishing(true);
+    try {
+      const result = await apiPatch<{ published: number }>('/matches/bulk-publish', { eventId });
+      setMatches((prev) =>
+        prev.map((m) => (m.status === 'DRAFT' ? { ...m, status: 'PUBLISHED' } : m)),
+      );
+      toast.success(`${result.published} pertandingan berhasil dipublish`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal mempublish pertandingan';
+      toast.error(message);
+    } finally {
+      setBulkPublishing(false);
     }
   };
 
@@ -2028,6 +2050,23 @@ export default function EventManagementPage() {
               </p>
             </Card>
           ) : (
+            <>
+              {/* Bulk publish banner */}
+              {matches.some((m) => m.status === 'DRAFT') && (
+                <div className="flex items-center justify-between rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+                  <p className="text-sm text-amber-300">
+                    <span className="font-semibold">{matches.filter((m) => m.status === 'DRAFT').length} pertandingan</span> masih DRAFT dan tidak terlihat publik.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleBulkPublish}
+                    disabled={bulkPublishing}
+                    className="bg-amber-500 hover:bg-amber-400 text-white text-xs font-semibold"
+                  >
+                    {bulkPublishing ? <Spinner className="w-4 h-4" /> : 'Publish Semua'}
+                  </Button>
+                </div>
+              )}
             <div className="space-y-1">
               {(() => {
                 // Sort: GROUP stage first (by groupName ASC), then scheduledAt ASC; KNOCKOUT after
@@ -2150,6 +2189,7 @@ export default function EventManagementPage() {
                 return elements;
               })()}
             </div>
+            </>
           )}
 
           {/* Match Edit Modal */}

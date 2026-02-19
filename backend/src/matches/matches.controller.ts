@@ -107,6 +107,16 @@ export class MatchesController {
   }
 
   @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('bulk-publish')
+  async bulkPublish(
+    @Body('eventId') eventId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.matchesService.bulkPublish(eventId, userId, userRole);
+  }
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
   @Patch(':id/publish')
   async publish(
     @Param('id', ParseUUIDPipe) id: string,

@@ -173,6 +173,7 @@ export class MatchesService {
         halfCount: dto.halfCount,
         breakDurationMinutes: dto.breakDurationMinutes,
         injuryTimeMinutes: dto.injuryTimeMinutes,
+        status: MatchStatus.PUBLISHED,
       },
       include: {
         homeTeam: {
@@ -834,6 +835,27 @@ export class MatchesService {
       data: { status: MatchStatus.DRAFT },
       include: this.matchInclude(),
     });
+  }
+
+  // ─── Bulk Publish ────────────────────────────────────────────────
+
+  async bulkPublish(eventId: string, userId: string, userRole: UserRole) {
+    await this.ownershipService.assertEventOwner(eventId, userId, userRole);
+
+    const tournaments = await this.prisma.tournament.findMany({
+      where: { eventId },
+      select: { id: true },
+    });
+
+    const result = await this.prisma.match.updateMany({
+      where: {
+        tournamentId: { in: tournaments.map((t) => t.id) },
+        status: MatchStatus.DRAFT,
+      },
+      data: { status: MatchStatus.PUBLISHED },
+    });
+
+    return { published: result.count };
   }
 
   // ─── Team Manager — My Team Matches ─────────────────────────────
