@@ -22,9 +22,10 @@ async function bootstrap() {
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }));
 
-  // Serve uploaded files at /api/storage/* (accessible through reverse proxy)
+  // Serve uploaded files at /storage/*
+  // Nginx strips /api prefix, so backend sees /storage/* directly
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/api/storage/',
+    prefix: '/storage/',
   });
 
   // Global pipes
