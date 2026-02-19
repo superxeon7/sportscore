@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { UserRole } from '@/lib/types';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, ArrowRight } from 'lucide-react';
 
 function getDashboardPath(role: UserRole): string {
   switch (role) {
@@ -54,20 +54,26 @@ export default function LoginPage() {
 
   return (
     <>
-      <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">
-        Selamat Datang Kembali
-      </h1>
-      <p className="mb-6 text-center text-sm text-gray-500">
-        Masuk ke akun Anda untuk melanjutkan
-      </p>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">
+          Selamat Datang 👋
+        </h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Masuk ke akun Anda untuk melanjutkan
+        </p>
+      </div>
 
+      {/* Error message */}
       {displayError && (
-        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="mb-5 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="h-2 w-2 shrink-0 rounded-full bg-red-400" />
           {displayError}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <Input
           label="Email"
           type="email"
@@ -80,35 +86,53 @@ export default function LoginPage() {
           required
         />
 
-        <Input
-          label="Kata Sandi"
-          type="password"
-          name="password"
-          placeholder="Masukkan kata sandi Anda"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          icon={<Lock className="h-4 w-4" />}
-          required
-        />
+        <div>
+          <Input
+            label="Kata Sandi"
+            type="password"
+            name="password"
+            placeholder="Masukkan kata sandi Anda"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            icon={<Lock className="h-4 w-4" />}
+            required
+          />
+        </div>
 
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-          Ingat saya
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/30 focus:ring-offset-0"
+            />
+            Ingat saya
+          </label>
+        </div>
 
-        <Button type="submit" loading={isLoading} className="mt-2 w-full">
-          Masuk
+        <Button type="submit" loading={isLoading} className="mt-1 w-full py-2.5 text-base font-semibold">
+          <span className="flex items-center justify-center gap-2">
+            Masuk
+            {!isLoading && <ArrowRight className="h-4 w-4" />}
+          </span>
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-gray-500">
+      {/* Divider */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/[0.06]" />
+        <span className="text-xs text-slate-600">atau</span>
+        <div className="h-px flex-1 bg-white/[0.06]" />
+      </div>
+
+      {/* Register link */}
+      <p className="text-center text-sm text-slate-400">
         Belum punya akun?{' '}
         <Link
           href="/register"
-          className="font-medium text-blue-600 hover:text-blue-700"
+          className="font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
         >
-          Daftar
+          Daftar Sekarang
         </Link>
       </p>
     </>

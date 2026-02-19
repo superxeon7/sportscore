@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { UserRole } from '@/lib/types';
+import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 const roleOptions = [
   { value: UserRole.TEAM_MANAGER, label: 'Manajer Tim' },
@@ -76,17 +77,26 @@ export default function RegisterPage() {
 
   return (
     <>
-      <h1 className="mb-6 text-center text-2xl font-semibold text-gray-900">
-        Buat Akun Anda
-      </h1>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">
+          Buat Akun Baru 🚀
+        </h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Mulai kelola tim dan turnamen Anda hari ini
+        </p>
+      </div>
 
+      {/* Error message */}
       {displayError && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="mb-5 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="h-2 w-2 shrink-0 rounded-full bg-red-400" />
           {displayError}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-4">
           <Input
             label="Nama Depan"
@@ -94,6 +104,7 @@ export default function RegisterPage() {
             placeholder="Budi"
             value={formData.firstName}
             onChange={handleChange}
+            icon={<User className="h-4 w-4" />}
             required
           />
           <Input
@@ -114,6 +125,7 @@ export default function RegisterPage() {
           value={formData.email}
           onChange={handleChange}
           autoComplete="email"
+          icon={<Mail className="h-4 w-4" />}
           required
         />
 
@@ -125,6 +137,7 @@ export default function RegisterPage() {
           value={formData.password}
           onChange={handleChange}
           autoComplete="new-password"
+          icon={<Lock className="h-4 w-4" />}
           required
         />
 
@@ -136,16 +149,27 @@ export default function RegisterPage() {
           options={roleOptions}
         />
 
-        <Button type="submit" loading={isLoading} className="mt-2 w-full">
-          Buat Akun
+        <Button type="submit" loading={isLoading} className="mt-1 w-full py-2.5 text-base font-semibold">
+          <span className="flex items-center justify-center gap-2">
+            Buat Akun
+            {!isLoading && <ArrowRight className="h-4 w-4" />}
+          </span>
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-gray-600">
+      {/* Divider */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/[0.06]" />
+        <span className="text-xs text-slate-600">atau</span>
+        <div className="h-px flex-1 bg-white/[0.06]" />
+      </div>
+
+      {/* Login link */}
+      <p className="text-center text-sm text-slate-400">
         Sudah punya akun?{' '}
         <Link
           href="/login"
-          className="font-medium text-blue-600 hover:text-blue-700"
+          className="font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
         >
           Masuk
         </Link>
