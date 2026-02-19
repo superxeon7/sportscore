@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 const TOKEN_KEY = 'sportscore_access_token';
 const REFRESH_TOKEN_KEY = 'sportscore_refresh_token';

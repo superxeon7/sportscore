@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client';
+import { apiGet, apiPost, apiPatch, apiDelete, apiUpload } from '@/lib/api/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -163,23 +163,8 @@ export default function TeamOfficialsPage() {
         try {
             const formData = new FormData();
             formData.append('file', file);
-
-            const token = localStorage.getItem('sportscore_access_token') || '';
-            const res = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/uploads/image`,
-                {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                },
-            );
-
-            if (!res.ok) throw new Error('Upload gagal');
-            const json = await res.json();
-            const url = json?.data?.url ?? json?.url ?? '';
-            setForm((prev) => ({ ...prev, photoUrl: url }));
+            const result = await apiUpload<{ url: string }>('/uploads/image', formData);
+            setForm((prev) => ({ ...prev, photoUrl: result.url }));
             toast.success('Foto berhasil diunggah');
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Upload gagal';

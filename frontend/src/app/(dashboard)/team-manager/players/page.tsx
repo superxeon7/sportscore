@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client';
+import { apiGet, apiPost, apiPatch, apiDelete, apiUpload } from '@/lib/api/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -250,8 +250,6 @@ export default function PlayersPage() {
   const [deletingPlayerId, setDeletingPlayerId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-
   const handlePhotoUpload = async (file: File) => {
     if (!file) return;
     const maxSize = 2 * 1024 * 1024; // 2MB
@@ -268,16 +266,8 @@ export default function PlayersPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('sportscore_access_token') : null;
-      const res = await fetch(`${API_BASE_URL}/uploads/image`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      if (!res.ok) throw new Error('Gagal mengunggah foto');
-      const json = await res.json();
-      const url = json?.data?.url ?? json?.url ?? '';
-      setPlayerForm((prev) => ({ ...prev, photoUrl: url }));
+      const result = await apiUpload<{ url: string }>('/uploads/image', formData);
+      setPlayerForm((prev) => ({ ...prev, photoUrl: result.url }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal mengunggah foto';
       toast.error(message);
