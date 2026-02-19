@@ -977,6 +977,7 @@ export class EventCategoriesService {
       groupName: string;
       matchDay: number;
       scheduledAt: Date;
+      status: MatchStatus;
     }[] = [];
 
     for (const group of groups) {
@@ -997,6 +998,7 @@ export class EventCategoriesService {
             groupName: group.groupName,
             matchDay,
             scheduledAt: new Date(baseDate.getTime() + dayOffset * 86400000),
+            status: MatchStatus.PUBLISHED,
           });
         }
       }

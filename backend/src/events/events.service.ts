@@ -696,22 +696,15 @@ export class EventsService {
       return { data: [] };
     }
 
-    // ── Status filter — exclude DRAFT and CANCELLED always ──
-    const activeStatuses: MatchStatus[] = [
-      MatchStatus.PUBLISHED,
-      MatchStatus.SCHEDULED,
-      MatchStatus.WARMUP,
-      MatchStatus.LIVE,
-      MatchStatus.HALF_TIME,
-      MatchStatus.PAUSED,
-    ];
-    if (query.includeCompleted) {
-      activeStatuses.push(MatchStatus.COMPLETED);
+    // ── Organizer view: show all matches except CANCELLED ──
+    const excludedStatuses: MatchStatus[] = [MatchStatus.CANCELLED];
+    if (!query.includeCompleted) {
+      excludedStatuses.push(MatchStatus.COMPLETED);
     }
 
     const matchWhere: Record<string, unknown> = {
       tournamentId: { in: tournamentIds },
-      status: { in: activeStatuses },
+      status: { notIn: excludedStatuses },
     };
 
     if (query.eventCategoryId) {

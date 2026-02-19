@@ -441,6 +441,7 @@ export class TournamentsService {
       round: fixture.round,
       matchDay: fixture.matchDay,
       scheduledAt: fixture.scheduledAt ?? new Date(baseDate.getTime() + fixture.matchDay * 86400000),
+      status: MatchStatus.PUBLISHED,
     }));
 
     await this.prisma.match.createMany({
