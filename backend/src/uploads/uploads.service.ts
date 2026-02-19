@@ -30,7 +30,7 @@ export class UploadsService {
     }
 
     const pathSegment = subdir ? `${subdir}/${file.filename}` : file.filename;
-    const url = `${this.baseUrl}/storage/${pathSegment}`;
+    const url = `${this.baseUrl}/api/storage/${pathSegment}`;
 
     return { url };
   }

@@ -22,9 +22,9 @@ async function bootstrap() {
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }));
 
-  // Serve uploaded files at /storage/* (avoids collision with /uploads controller)
+  // Serve uploaded files at /api/storage/* (accessible through reverse proxy)
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/storage/',
+    prefix: '/api/storage/',
   });
 
   // Global pipes
