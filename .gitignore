@@ -42,3 +42,10 @@ backend/uploads/*
 # Misc
 *.tsbuildinfo
 next-env.d.ts
+
+# Logs
+backend/build-output.txt
+backend/migrate-output.txt
+backend/generated/
+nul
+tsc-errors.txt
