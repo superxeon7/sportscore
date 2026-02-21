@@ -388,6 +388,8 @@ model Team {
   players            Player[]
   homeMatches        Match[]             @relation("HomeTeam")
   awayMatches        Match[]             @relation("AwayTeam")
+  matchesWon         Match[]             @relation("MatchWinner")
+  matchesPenaltyWon  Match[]             @relation("MatchPenaltyWinner")
   categoryTeams      EventCategoryTeam[]
   standings          Standing[]
   matchLineups       MatchLineup[]
@@ -459,6 +461,10 @@ model Match {
   awayPenaltyScore     Int?        @map("away_penalty_score")
   isPenaltyUsed        Boolean     @default(false) @map("is_penalty_used")
 
+  // ── Result fields ──
+  winnerTeamId         String?     @map("winner_team_id")
+  penaltyWinnerTeamId  String?     @map("penalty_winner_team_id")
+
   // ── Swiss fields ──
   swissRoundId     String?       @map("swiss_round_id")
 
@@ -485,6 +491,8 @@ model Match {
   tournament       Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   homeTeam         Team           @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam         Team           @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  winnerTeam       Team?          @relation("MatchWinner", fields: [winnerTeamId], references: [id])
+  penaltyWinnerTeam Team?         @relation("MatchPenaltyWinner", fields: [penaltyWinnerTeamId], references: [id])
   eventCategory    EventCategory? @relation(fields: [eventCategoryId], references: [id])
   categoryGroup    CategoryGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   playerOfTheMatch Player?        @relation("MatchPOTM", fields: [playerOfTheMatchId], references: [id])
@@ -515,6 +523,8 @@ model Match {
   @@index([winnerToMatchId])
   @@index([loserToMatchId])
   @@index([swissRoundId])
+  @@index([winnerTeamId])
+  @@index([penaltyWinnerTeamId])
   @@map("matches")
 }
 

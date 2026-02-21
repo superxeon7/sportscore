@@ -318,11 +318,38 @@ export class LiveScoringService {
       );
     }
 
+    // Fetch the current score to determine winner
+    const scoreRecord = await this.prisma.matchScore.findUnique({
+      where: { matchId },
+    });
+
+    // Compute winnerTeamId from regular-time score
+    let winnerTeamId: string | null = null;
+    if (scoreRecord) {
+      if (scoreRecord.homeScore > scoreRecord.awayScore) {
+        winnerTeamId = match.homeTeamId;
+      } else if (scoreRecord.awayScore > scoreRecord.homeScore) {
+        winnerTeamId = match.awayTeamId;
+      }
+      // null = draw in regular time
+    }
+
+    // Compute penaltyWinnerTeamId from penalty shootout scores
+    let penaltyWinnerTeamId: string | null = null;
+    if (match.isPenaltyUsed) {
+      const hPen = match.homePenaltyScore ?? 0;
+      const aPen = match.awayPenaltyScore ?? 0;
+      if (hPen > aPen) penaltyWinnerTeamId = match.homeTeamId;
+      else if (aPen > hPen) penaltyWinnerTeamId = match.awayTeamId;
+    }
+
     await this.prisma.match.update({
       where: { id: matchId },
       data: {
         status: MatchStatus.COMPLETED,
         endedAt: new Date(),
+        winnerTeamId,
+        penaltyWinnerTeamId,
       },
     });
 

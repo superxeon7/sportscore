@@ -12,6 +12,7 @@ import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchQueryDto } from './dto/match-query.dto';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
 import { OwnershipService } from '../common/ownership.service';
+import { StandingsService } from '../standings/standings.service';
 
 /**
  * Valid status transitions for matches.
@@ -69,6 +70,7 @@ export class MatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownershipService: OwnershipService,
+    private readonly standingsService: StandingsService,
   ) { }
 
   async create(dto: CreateMatchDto, userId: string, userRole: UserRole) {
@@ -778,8 +780,28 @@ export class MatchesService {
 
     // Auto-generate POTM after match ends
     if (newStatus === MatchStatus.COMPLETED) {
+      // Set winnerTeamId based on final score
+      if (updated.matchScore) {
+        const hs = updated.matchScore.homeScore;
+        const as_ = updated.matchScore.awayScore;
+        const winnerTeamId = hs > as_ ? updated.homeTeamId
+          : as_ > hs ? updated.awayTeamId
+          : null;
+        if (winnerTeamId !== null) {
+          await this.prisma.match.update({
+            where: { id },
+            data: { winnerTeamId },
+          });
+        }
+      }
+
       this.autoGeneratePotm(id).catch((err) =>
         this.logger.error(`POTM auto-generate failed for match ${id}: ${err?.message}`),
+      );
+
+      // Update standings (non-blocking)
+      this.standingsService.updateAfterMatch(id).catch((err) =>
+        this.logger.error(`Standings update failed for match ${id}: ${err?.message}`),
       );
     }
 

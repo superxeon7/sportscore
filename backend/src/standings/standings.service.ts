@@ -112,7 +112,7 @@ export class StandingsService {
       const groupStage = await this.prisma.categoryStage.findFirst({
         where: {
           categoryId: tournament.eventCategoryId,
-          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR] },
+          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR, StageType.LEAGUE, StageType.SWISS] },
         },
       });
       penaltyEnabled = groupStage?.penaltyEnabled ?? false;
@@ -358,7 +358,7 @@ export class StandingsService {
       const groupStage = await this.prisma.categoryStage.findFirst({
         where: {
           categoryId: match.tournament.eventCategoryId,
-          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR] },
+          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR, StageType.LEAGUE, StageType.SWISS] },
         },
       });
       penaltyEnabled = groupStage?.penaltyEnabled ?? false;
