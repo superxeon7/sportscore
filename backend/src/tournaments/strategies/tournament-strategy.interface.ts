@@ -4,6 +4,18 @@ export interface FixtureMatch {
   round: number;
   matchDay: number;
   scheduledAt?: Date;
+  // Double Elimination fields
+  bracket?: string;
+  matchIndex?: number;
+  isGrandFinal?: boolean;
+  isResetFinal?: boolean;
+  stageType?: string;
+  /** Internal temp ID used during generation to wire linkages */
+  _tempId?: string;
+  _winnerTo?: string;
+  _loserTo?: string;
+  _sourceA?: string;
+  _sourceB?: string;
 }
 
 export interface TournamentStrategy {

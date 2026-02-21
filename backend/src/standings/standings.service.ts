@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { MatchStatus } from '@prisma/client';
+import { MatchStatus, StageType } from '@prisma/client';
 
 const STANDINGS_CACHE_TTL = 300; // 5 minutes in seconds
 
@@ -20,6 +20,8 @@ interface TeamRecord {
   goalsAgainst: number;
   goalDifference: number;
   points: number;
+  penaltyWins: number;
+  penaltyLosses: number;
   group: string | null;
 }
 
@@ -30,7 +32,7 @@ export class StandingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-  ) {}
+  ) { }
 
   /**
    * Get standings for a tournament, optionally filtered by group.
@@ -104,10 +106,26 @@ export class StandingsService {
       );
     }
 
+    // Determine if penalty mode is active for this tournament's stage
+    let penaltyEnabled = false;
+    if (tournament.eventCategoryId) {
+      const groupStage = await this.prisma.categoryStage.findFirst({
+        where: {
+          categoryId: tournament.eventCategoryId,
+          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR] },
+        },
+      });
+      penaltyEnabled = groupStage?.penaltyEnabled ?? false;
+    }
+
     const config = (tournament.config as TournamentConfig) || {};
     const pointsForWin = config.pointsForWin ?? 3;
     const pointsForDraw = config.pointsForDraw ?? 1;
     const pointsForLoss = config.pointsForLoss ?? 0;
+
+    // Penalty-aware points
+    const pointsForPenaltyWin = 2;
+    const pointsForPenaltyLoss = 1;
 
     // Get all completed matches for this tournament
     const matches = await this.prisma.match.findMany({
@@ -142,6 +160,8 @@ export class StandingsService {
           goalsAgainst: 0,
           goalDifference: 0,
           points: 0,
+          penaltyWins: 0,
+          penaltyLosses: 0,
           group: match.group,
         });
       }
@@ -155,6 +175,8 @@ export class StandingsService {
           goalsAgainst: 0,
           goalDifference: 0,
           points: 0,
+          penaltyWins: 0,
+          penaltyLosses: 0,
           group: match.group,
         });
       }
@@ -184,10 +206,32 @@ export class StandingsService {
         homeRecord.lost += 1;
         homeRecord.points += pointsForLoss;
       } else {
-        homeRecord.drawn += 1;
-        homeRecord.points += pointsForDraw;
-        awayRecord.drawn += 1;
-        awayRecord.points += pointsForDraw;
+        // Draw in regular time
+        if (penaltyEnabled && match.isPenaltyUsed) {
+          const hPen = match.homePenaltyScore ?? 0;
+          const aPen = match.awayPenaltyScore ?? 0;
+          if (hPen > aPen) {
+            homeRecord.penaltyWins += 1;
+            homeRecord.points += pointsForPenaltyWin;
+            awayRecord.penaltyLosses += 1;
+            awayRecord.points += pointsForPenaltyLoss;
+          } else if (aPen > hPen) {
+            awayRecord.penaltyWins += 1;
+            awayRecord.points += pointsForPenaltyWin;
+            homeRecord.penaltyLosses += 1;
+            homeRecord.points += pointsForPenaltyLoss;
+          } else {
+            homeRecord.drawn += 1;
+            homeRecord.points += pointsForDraw;
+            awayRecord.drawn += 1;
+            awayRecord.points += pointsForDraw;
+          }
+        } else {
+          homeRecord.drawn += 1;
+          homeRecord.points += pointsForDraw;
+          awayRecord.drawn += 1;
+          awayRecord.points += pointsForDraw;
+        }
       }
 
       // Update goal difference
@@ -235,6 +279,8 @@ export class StandingsService {
           goalsAgainst: record.goalsAgainst,
           goalDifference: record.goalDifference,
           points: record.points,
+          penaltyWins: record.penaltyWins,
+          penaltyLosses: record.penaltyLosses,
           group: record.group,
           form,
         },
@@ -248,6 +294,8 @@ export class StandingsService {
           goalsAgainst: record.goalsAgainst,
           goalDifference: record.goalDifference,
           points: record.points,
+          penaltyWins: record.penaltyWins,
+          penaltyLosses: record.penaltyLosses,
           group: record.group,
           form,
         },
@@ -303,10 +351,25 @@ export class StandingsService {
     }
 
     const tournamentId = match.tournamentId;
+
+    // Determine if penalty mode is active
+    let penaltyEnabled = false;
+    if (match.tournament.eventCategoryId) {
+      const groupStage = await this.prisma.categoryStage.findFirst({
+        where: {
+          categoryId: match.tournament.eventCategoryId,
+          stageType: { in: [StageType.GROUP, StageType.SPECIAL_GROUP, StageType.GROUP_NEIGHBOR] },
+        },
+      });
+      penaltyEnabled = groupStage?.penaltyEnabled ?? false;
+    }
+
     const config = (match.tournament.config as TournamentConfig) || {};
     const pointsForWin = config.pointsForWin ?? 3;
     const pointsForDraw = config.pointsForDraw ?? 1;
     const pointsForLoss = config.pointsForLoss ?? 0;
+    const pointsForPenaltyWin = 2;
+    const pointsForPenaltyLoss = 1;
 
     const teamIds = [match.homeTeamId, match.awayTeamId];
 
@@ -332,6 +395,8 @@ export class StandingsService {
         goalsAgainst: 0,
         goalDifference: 0,
         points: 0,
+        penaltyWins: 0,
+        penaltyLosses: 0,
         group: null,
       };
 
@@ -358,8 +423,24 @@ export class StandingsService {
           record.lost += 1;
           record.points += pointsForLoss;
         } else {
-          record.drawn += 1;
-          record.points += pointsForDraw;
+          // Draw in regular time
+          if (penaltyEnabled && m.isPenaltyUsed) {
+            const myPen = isHome ? (m.homePenaltyScore ?? 0) : (m.awayPenaltyScore ?? 0);
+            const oppPen = isHome ? (m.awayPenaltyScore ?? 0) : (m.homePenaltyScore ?? 0);
+            if (myPen > oppPen) {
+              record.penaltyWins += 1;
+              record.points += pointsForPenaltyWin;
+            } else if (oppPen > myPen) {
+              record.penaltyLosses += 1;
+              record.points += pointsForPenaltyLoss;
+            } else {
+              record.drawn += 1;
+              record.points += pointsForDraw;
+            }
+          } else {
+            record.drawn += 1;
+            record.points += pointsForDraw;
+          }
         }
 
         if (m.group) {
@@ -387,6 +468,8 @@ export class StandingsService {
           goalsAgainst: record.goalsAgainst,
           goalDifference: record.goalDifference,
           points: record.points,
+          penaltyWins: record.penaltyWins,
+          penaltyLosses: record.penaltyLosses,
           group: record.group,
           form,
         },
@@ -399,6 +482,8 @@ export class StandingsService {
           goalsAgainst: record.goalsAgainst,
           goalDifference: record.goalDifference,
           points: record.points,
+          penaltyWins: record.penaltyWins,
+          penaltyLosses: record.penaltyLosses,
           group: record.group,
           form,
         },

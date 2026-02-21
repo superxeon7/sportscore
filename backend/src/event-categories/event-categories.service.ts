@@ -14,7 +14,7 @@ import { buildPaginationMeta } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class EventCategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(
     eventId: string,
@@ -77,9 +77,17 @@ export class EventCategoriesService {
         const tournamentType =
           stage.stageType === StageType.GROUP
             ? 'GROUP_KNOCKOUT'
-            : stage.stageType === StageType.LEAGUE
-              ? 'LEAGUE'
-              : 'KNOCKOUT';
+            : stage.stageType === StageType.SPECIAL_GROUP
+              ? 'GROUP_KNOCKOUT'
+              : stage.stageType === StageType.GROUP_NEIGHBOR
+                ? 'GROUP_KNOCKOUT'
+                : stage.stageType === StageType.LEAGUE
+                  ? 'LEAGUE'
+                  : stage.stageType === StageType.DOUBLE_ELIMINATION
+                    ? 'DOUBLE_ELIMINATION'
+                    : stage.stageType === StageType.SWISS
+                      ? 'SWISS'
+                      : 'KNOCKOUT';
 
         await this.prisma.tournament.create({
           data: {
@@ -94,18 +102,21 @@ export class EventCategoriesService {
               ...(stage.qualifyPerGroup
                 ? { qualifyPerGroup: stage.qualifyPerGroup }
                 : {}),
-            },
+              ...((stage as any).settingsJson && Object.keys((stage as any).settingsJson).length > 0
+                ? { settingsJson: (stage as any).settingsJson }
+                : {}),
+            } as any,
           },
         });
       }
 
       // Auto-create CategoryGroup rows for GROUP stages (linked to the category itself)
       const hasGroupStage = stageConfigs.some(
-        (s) => s.stageType === StageType.GROUP,
+        (s) => s.stageType === StageType.GROUP || s.stageType === StageType.SPECIAL_GROUP || s.stageType === StageType.GROUP_NEIGHBOR,
       );
       if (hasGroupStage) {
         const groupStageConfig = stageConfigs.find(
-          (s) => s.stageType === StageType.GROUP,
+          (s) => s.stageType === StageType.GROUP || s.stageType === StageType.SPECIAL_GROUP || s.stageType === StageType.GROUP_NEIGHBOR,
         )!;
         const groupCount = groupStageConfig.groupCount ?? 2;
 
@@ -149,6 +160,9 @@ export class EventCategoriesService {
         stageType: s.stageType as StageType,
         groupCount: s.groupCount ?? null,
         qualifyPerGroup: s.qualifyPerGroup ?? null,
+        matchPerTeam: s.matchPerTeam ?? null,
+        penaltyEnabled: s.stageType === 'KNOCKOUT' ? true : (s.penaltyEnabled ?? false),
+        settingsJson: (s.settingsJson ?? {}) as any,
       }));
     }
 
@@ -162,6 +176,7 @@ export class EventCategoriesService {
             stageType: StageType.GROUP,
             groupCount: dto.groupCount ?? 2,
             qualifyPerGroup: dto.qualifyPerGroup ?? 2,
+            settingsJson: {} as any,
           },
           {
             categoryId,
@@ -169,6 +184,7 @@ export class EventCategoriesService {
             stageType: StageType.KNOCKOUT,
             groupCount: null,
             qualifyPerGroup: null,
+            settingsJson: {} as any,
           },
         ];
       }
@@ -179,6 +195,7 @@ export class EventCategoriesService {
           stageType: StageType.KNOCKOUT,
           groupCount: null,
           qualifyPerGroup: null,
+          settingsJson: {} as any,
         },
       ];
     }
@@ -341,6 +358,7 @@ export class EventCategoriesService {
         stageType: s.stageType as StageType,
         groupCount: s.groupCount ?? null,
         qualifyPerGroup: s.qualifyPerGroup ?? null,
+        settingsJson: (s.settingsJson ?? {}) as any,
       }));
       await this.prisma.categoryStage.createMany({ data: stageConfigs });
 
@@ -350,9 +368,17 @@ export class EventCategoriesService {
         const tournamentType =
           stage.stageType === StageType.GROUP
             ? 'GROUP_KNOCKOUT'
-            : stage.stageType === StageType.LEAGUE
-              ? 'LEAGUE'
-              : 'KNOCKOUT';
+            : stage.stageType === StageType.SPECIAL_GROUP
+              ? 'GROUP_KNOCKOUT'
+              : stage.stageType === StageType.GROUP_NEIGHBOR
+                ? 'GROUP_KNOCKOUT'
+                : stage.stageType === StageType.LEAGUE
+                  ? 'LEAGUE'
+                  : stage.stageType === StageType.DOUBLE_ELIMINATION
+                    ? 'DOUBLE_ELIMINATION'
+                    : stage.stageType === StageType.SWISS
+                      ? 'SWISS'
+                      : 'KNOCKOUT';
 
         await this.prisma.tournament.create({
           data: {
@@ -367,14 +393,17 @@ export class EventCategoriesService {
               ...(stage.qualifyPerGroup
                 ? { qualifyPerGroup: stage.qualifyPerGroup }
                 : {}),
-            },
+              ...(stage.settingsJson && Object.keys(stage.settingsJson).length > 0
+                ? { settingsJson: stage.settingsJson }
+                : {}),
+            } as any,
           },
         });
       }
 
       // Auto-create CategoryGroups for GROUP stages
       const groupStage = stageConfigs.find(
-        (s) => s.stageType === StageType.GROUP,
+        (s) => s.stageType === StageType.GROUP || s.stageType === StageType.SPECIAL_GROUP || s.stageType === StageType.GROUP_NEIGHBOR,
       );
       if (groupStage) {
         const groupCount = groupStage.groupCount ?? 2;
@@ -691,6 +720,9 @@ export class EventCategoriesService {
   async getCategoryStandings(categoryId: string) {
     const category = await this.prisma.eventCategory.findUnique({
       where: { id: categoryId },
+      include: {
+        stages: { orderBy: { stageOrder: 'asc' } },
+      },
     });
 
     if (!category) {
@@ -698,6 +730,12 @@ export class EventCategoriesService {
         `Event category with id ${categoryId} not found`,
       );
     }
+
+    // Check if penalty mode is enabled for the group stage
+    const groupStage = category.stages?.find(
+      (s) => s.stageType === StageType.GROUP || s.stageType === StageType.SPECIAL_GROUP || s.stageType === StageType.GROUP_NEIGHBOR,
+    );
+    const penaltyEnabled = groupStage?.penaltyEnabled ?? false;
 
     const matches = await this.prisma.match.findMany({
       where: {
@@ -718,6 +756,8 @@ export class EventCategoriesService {
         lose: number;
         goalsFor: number;
         goalsAgainst: number;
+        penaltyWins: number;
+        penaltyLosses: number;
       }
     >();
 
@@ -731,6 +771,8 @@ export class EventCategoriesService {
           lose: 0,
           goalsFor: 0,
           goalsAgainst: 0,
+          penaltyWins: 0,
+          penaltyLosses: 0,
         });
       }
       return map.get(teamId)!;
@@ -758,17 +800,37 @@ export class EventCategoriesService {
         away.win++;
         home.lose++;
       } else {
-        home.draw++;
-        away.draw++;
+        // Draw in regular time
+        if (penaltyEnabled && match.isPenaltyUsed) {
+          // Penalty shootout determines winner
+          const hPen = match.homePenaltyScore ?? 0;
+          const aPen = match.awayPenaltyScore ?? 0;
+          if (hPen > aPen) {
+            home.penaltyWins++;
+            away.penaltyLosses++;
+          } else if (aPen > hPen) {
+            away.penaltyWins++;
+            home.penaltyLosses++;
+          } else {
+            home.draw++;
+            away.draw++;
+          }
+        } else {
+          home.draw++;
+          away.draw++;
+        }
       }
     }
 
     // Convert to sorted array
+    // Penalty-aware points: Win=3, PenWin=2, Draw=1, PenLoss=1, Loss=0
     const standings = Array.from(map.values())
       .map((s) => ({
         ...s,
         goalDiff: s.goalsFor - s.goalsAgainst,
-        points: s.win * 3 + s.draw,
+        points: penaltyEnabled
+          ? s.win * 3 + s.penaltyWins * 2 + s.draw + s.penaltyLosses
+          : s.win * 3 + s.draw,
       }))
       .sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
@@ -791,6 +853,7 @@ export class EventCategoriesService {
     const teamMap = new Map(teams.map((t) => [t.id, t]));
 
     return {
+      penaltyEnabled,
       data: standings.map((s, i) => ({
         position: i + 1,
         team: teamMap.get(s.teamId) || null,
@@ -815,7 +878,6 @@ export class EventCategoriesService {
     const matches = await this.prisma.match.findMany({
       where: {
         eventCategoryId: categoryId,
-        status: { notIn: [MatchStatus.DRAFT, MatchStatus.CANCELLED] },
         round: { not: null },
       },
       include: {
@@ -827,10 +889,62 @@ export class EventCategoriesService {
         },
         matchScore: true,
       },
-      orderBy: [{ round: 'asc' }, { scheduledAt: 'asc' }],
+      orderBy: [{ bracket: 'asc' }, { round: 'asc' }, { matchIndex: 'asc' }],
     });
 
-    // Group by round
+    // Check if this is a double elimination bracket
+    const hasDoubleElim = matches.some((m) => m.bracket != null);
+
+    if (hasDoubleElim) {
+      // Structured double elimination response
+      const upper: Record<number, typeof matches> = {};
+      const lower: Record<number, typeof matches> = {};
+      let grandFinal: typeof matches[0] | null = null;
+      let resetFinal: typeof matches[0] | null = null;
+
+      for (const match of matches) {
+        if (match.bracket === 'UPPER') {
+          const r = match.round!;
+          if (!upper[r]) upper[r] = [];
+          upper[r].push(match);
+        } else if (match.bracket === 'LOWER') {
+          const r = match.round!;
+          if (!lower[r]) lower[r] = [];
+          lower[r].push(match);
+        } else if (match.bracket === 'GRAND_FINAL') {
+          grandFinal = match;
+        } else if (match.bracket === 'RESET_FINAL') {
+          resetFinal = match;
+        }
+      }
+
+      // Get seeding
+      const seeding = await this.prisma.eventCategoryTeam.findMany({
+        where: { eventCategoryId: categoryId },
+        include: {
+          team: {
+            select: { id: true, name: true, shortName: true, logoUrl: true },
+          },
+        },
+        orderBy: { seed: 'asc' },
+      });
+
+      return {
+        type: 'DOUBLE_ELIMINATION',
+        data: {
+          upper,
+          lower,
+          grandFinal,
+          resetFinal,
+          seeding: seeding.map((s) => ({
+            seed: s.seed,
+            team: s.team,
+          })),
+        },
+      };
+    }
+
+    // Legacy: group by round (for knockout / league)
     const rounds: Record<number, typeof matches> = {};
     for (const match of matches) {
       const round = match.round!;
@@ -838,7 +952,7 @@ export class EventCategoriesService {
       rounds[round].push(match);
     }
 
-    return { data: rounds };
+    return { type: 'STANDARD', data: rounds };
   }
 
   // ── Stages ──
@@ -903,16 +1017,21 @@ export class EventCategoriesService {
       throw new ForbiddenException('You do not have permission');
     }
 
-    const groupStage = category.stages.find((s) => s.stageType === StageType.GROUP);
+    const groupStage = category.stages.find(
+      (s) => s.stageType === StageType.GROUP || s.stageType === StageType.SPECIAL_GROUP || s.stageType === StageType.GROUP_NEIGHBOR,
+    );
     if (!groupStage) {
-      throw new BadRequestException('No GROUP stage found for this category');
+      throw new BadRequestException('No GROUP, SPECIAL_GROUP, or GROUP_NEIGHBOR stage found for this category');
     }
+
+    const isSpecialGroup = groupStage.stageType === StageType.SPECIAL_GROUP;
+    const isNeighborGroup = groupStage.stageType === StageType.GROUP_NEIGHBOR;
 
     // Find the tournament linked to this group stage
     const tournament = await this.prisma.tournament.findFirst({
       where: {
         eventCategoryId: categoryId,
-        config: { path: ['stageType'], equals: 'GROUP' },
+        config: { path: ['stageType'], equals: isNeighborGroup ? 'GROUP_NEIGHBOR' : isSpecialGroup ? 'SPECIAL_GROUP' : 'GROUP' },
       },
     });
 
@@ -982,26 +1101,139 @@ export class EventCategoriesService {
 
     for (const group of groups) {
       const teamList = group.teamIds;
-      let matchDay = 0;
 
-      for (let i = 0; i < teamList.length; i++) {
-        for (let j = i + 1; j < teamList.length; j++) {
-          matchDay++;
-          dayOffset++;
-          matchData.push({
-            tournamentId: tournament.id,
-            homeTeamId: teamList[i],
-            awayTeamId: teamList[j],
-            eventCategoryId: categoryId,
-            stageType: 'GROUP',
-            groupId: group.groupId,
-            groupName: group.groupName,
-            matchDay,
-            scheduledAt: new Date(baseDate.getTime() + dayOffset * 86400000),
-            status: MatchStatus.PUBLISHED,
-          });
+      if (isNeighborGroup) {
+        // ── GROUP_NEIGHBOR: circular neighbor pairing ──
+        // Each team plays only its immediate neighbors (above + below, wrapping around)
+        const n = teamList.length;
+        let matchDay = 0;
+        const usedPairs = new Set<string>();
+
+        for (let i = 0; i < n; i++) {
+          const neighbors = [
+            teamList[(i - 1 + n) % n], // team above (wraps to last)
+            teamList[(i + 1) % n],     // team below (wraps to first)
+          ];
+
+          for (const neighbor of neighbors) {
+            const pairKey = [teamList[i], neighbor].sort().join(':');
+            if (usedPairs.has(pairKey)) continue;
+            usedPairs.add(pairKey);
+
+            matchDay++;
+            dayOffset++;
+            matchData.push({
+              tournamentId: tournament.id,
+              homeTeamId: teamList[i],
+              awayTeamId: neighbor,
+              eventCategoryId: categoryId,
+              stageType: 'GROUP_NEIGHBOR',
+              groupId: group.groupId,
+              groupName: group.groupName,
+              matchDay,
+              scheduledAt: new Date(baseDate.getTime() + dayOffset * 86400000),
+              status: MatchStatus.PUBLISHED,
+            });
+          }
+        }
+      } else if (isSpecialGroup && groupStage.matchPerTeam) {
+        // ── Special Group: limited matches per team via rotation pairing ──
+        const matchPerTeam = groupStage.matchPerTeam;
+        const maxMatches = Math.min(matchPerTeam, teamList.length - 1);
+
+        const matchCountMap = new Map<string, number>();
+        for (const id of teamList) matchCountMap.set(id, 0);
+
+        const usedPairs = new Set<string>();
+        const teams = [...teamList];
+        const hasBye = teams.length % 2 !== 0;
+        if (hasBye) teams.push('BYE');
+
+        const teamCount = teams.length;
+        const totalRounds = teamCount - 1;
+        const matchesPerRound = teamCount / 2;
+        const fixed = teams[teamCount - 1];
+        const rotating = teams.slice(0, teamCount - 1);
+
+        let matchDay = 0;
+
+        for (let round = 0; round < totalRounds; round++) {
+          const current = [...rotating];
+          const pairings: [string, string][] = [];
+
+          if (round % 2 === 0) {
+            pairings.push([fixed, current[0]]);
+          } else {
+            pairings.push([current[0], fixed]);
+          }
+
+          for (let i = 1; i < matchesPerRound; i++) {
+            const home = current[i];
+            const away = current[current.length - i];
+            pairings.push([home, away]);
+          }
+
+          for (const [home, away] of pairings) {
+            if (home === 'BYE' || away === 'BYE') continue;
+
+            const hc = matchCountMap.get(home)!;
+            const ac = matchCountMap.get(away)!;
+            if (hc >= maxMatches || ac >= maxMatches) continue;
+
+            const pairKey = [home, away].sort().join(':');
+            if (usedPairs.has(pairKey)) continue;
+
+            usedPairs.add(pairKey);
+            matchCountMap.set(home, hc + 1);
+            matchCountMap.set(away, ac + 1);
+
+            matchDay++;
+            dayOffset++;
+            matchData.push({
+              tournamentId: tournament.id,
+              homeTeamId: home,
+              awayTeamId: away,
+              eventCategoryId: categoryId,
+              stageType: isNeighborGroup ? 'GROUP_NEIGHBOR' : 'SPECIAL_GROUP',
+              groupId: group.groupId,
+              groupName: group.groupName,
+              matchDay,
+              scheduledAt: new Date(baseDate.getTime() + dayOffset * 86400000),
+              status: MatchStatus.PUBLISHED,
+            });
+          }
+
+          const last = rotating.pop()!;
+          rotating.unshift(last);
+        }
+      } else {
+        // ── Standard: full round-robin ──
+        let matchDay = 0;
+        for (let i = 0; i < teamList.length; i++) {
+          for (let j = i + 1; j < teamList.length; j++) {
+            matchDay++;
+            dayOffset++;
+            matchData.push({
+              tournamentId: tournament.id,
+              homeTeamId: teamList[i],
+              awayTeamId: teamList[j],
+              eventCategoryId: categoryId,
+              stageType: isNeighborGroup ? 'GROUP_NEIGHBOR' : isSpecialGroup ? 'SPECIAL_GROUP' : 'GROUP',
+              groupId: group.groupId,
+              groupName: group.groupName,
+              matchDay,
+              scheduledAt: new Date(baseDate.getTime() + dayOffset * 86400000),
+              status: MatchStatus.PUBLISHED,
+            });
+          }
         }
       }
+    }
+
+    console.log(`[generateGroupFixtures] stageType=${groupStage.stageType} groups=${groups.length} totalMatches=${matchData.length}`);
+    for (const g of groups) {
+      const groupMatches = matchData.filter(m => m.groupId === g.groupId);
+      console.log(`  Group "${g.groupName}": ${g.teamIds.length} teams, ${groupMatches.length} matches`);
     }
 
     await this.prisma.match.createMany({ data: matchData });
@@ -1219,5 +1451,134 @@ export class EventCategoriesService {
       knockoutMatches: matchups.length,
       totalRounds,
     };
+  }
+
+  // ── Category Control Center: Seeding ──
+
+  async updateSeeding(
+    categoryId: string,
+    teamIds: string[],
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const category = await this.prisma.eventCategory.findUnique({
+      where: { id: categoryId },
+      include: { event: { select: { organizerId: true } } },
+    });
+
+    if (!category) throw new NotFoundException(`Category ${categoryId} not found`);
+    if (category.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+
+    const updates = teamIds.map((teamId, index) =>
+      this.prisma.eventCategoryTeam.updateMany({
+        where: { eventCategoryId: categoryId, teamId },
+        data: { seed: index + 1 },
+      }),
+    );
+    await Promise.all(updates);
+
+    return { success: true, count: teamIds.length };
+  }
+
+  // ── Category Control Center: Assign team to group ──
+
+  async assignTeamGroup(
+    categoryId: string,
+    teamId: string,
+    groupId: string | null,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const category = await this.prisma.eventCategory.findUnique({
+      where: { id: categoryId },
+      include: { event: { select: { organizerId: true } } },
+    });
+
+    if (!category) throw new NotFoundException(`Category ${categoryId} not found`);
+    if (category.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+
+    // Validate group belongs to this category
+    if (groupId) {
+      const group = await this.prisma.categoryGroup.findFirst({
+        where: { id: groupId, categoryId },
+      });
+      if (!group) throw new NotFoundException('Group not found in this category');
+    }
+
+    await this.prisma.eventCategoryTeam.updateMany({
+      where: { eventCategoryId: categoryId, teamId },
+      data: { groupId },
+    });
+
+    return { success: true };
+  }
+
+  // ── Category Control Center: Bulk schedule matches ──
+
+  async bulkScheduleMatches(
+    categoryId: string,
+    updates: { matchId: string; scheduledAt?: string; venue?: string; matchDay?: number }[],
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const category = await this.prisma.eventCategory.findUnique({
+      where: { id: categoryId },
+      include: { event: { select: { organizerId: true } } },
+    });
+
+    if (!category) throw new NotFoundException(`Category ${categoryId} not found`);
+    if (category.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+
+    const ops = updates.map((u) => {
+      const data: Record<string, unknown> = {};
+      if (u.scheduledAt) data.scheduledAt = new Date(u.scheduledAt);
+      if (u.venue !== undefined) data.venue = u.venue;
+      if (u.matchDay !== undefined) data.matchDay = u.matchDay;
+      return this.prisma.match.update({
+        where: { id: u.matchId },
+        data,
+      });
+    });
+
+    await Promise.all(ops);
+    return { success: true, count: updates.length };
+  }
+
+  // ── Category Control Center: Swap bracket slots ──
+
+  async swapBracketSlots(
+    categoryId: string,
+    matchId: string,
+    slot: 'home' | 'away',
+    teamId: string,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const category = await this.prisma.eventCategory.findUnique({
+      where: { id: categoryId },
+      include: { event: { select: { organizerId: true } } },
+    });
+
+    if (!category) throw new NotFoundException(`Category ${categoryId} not found`);
+    if (category.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+
+    const match = await this.prisma.match.findFirst({
+      where: { id: matchId, eventCategoryId: categoryId },
+    });
+
+    if (!match) throw new NotFoundException('Match not found in this category');
+
+    const data = slot === 'home' ? { homeTeamId: teamId } : { awayTeamId: teamId };
+    await this.prisma.match.update({ where: { id: matchId }, data });
+
+    return { success: true };
   }
 }

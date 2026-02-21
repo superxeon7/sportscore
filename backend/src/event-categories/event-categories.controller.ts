@@ -22,7 +22,7 @@ import { UserRole } from '@prisma/client';
 export class EventCategoriesController {
   constructor(
     private readonly eventCategoriesService: EventCategoriesService,
-  ) {}
+  ) { }
 
   // ── List categories for an event ──
 
@@ -194,5 +194,58 @@ export class EventCategoriesController {
     @CurrentUser('id') userId: string,
   ) {
     return this.eventCategoriesService.registerTeam(id, teamId, userId);
+  }
+
+  // ── Category Control Center: Update seeding ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('event-categories/:id/seeding')
+  async updateSeeding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('teamIds') teamIds: string[],
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.updateSeeding(id, teamIds, userId, userRole);
+  }
+
+  // ── Category Control Center: Assign team to group ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('event-categories/:id/teams/:teamId/group')
+  async assignTeamGroup(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('teamId', ParseUUIDPipe) teamId: string,
+    @Body('groupId') groupId: string | null,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.assignTeamGroup(id, teamId, groupId, userId, userRole);
+  }
+
+  // ── Category Control Center: Bulk match schedule ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('event-categories/:id/matches/bulk-schedule')
+  async bulkScheduleMatches(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('updates') updates: { matchId: string; scheduledAt?: string; venue?: string; matchDay?: number }[],
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.bulkScheduleMatches(id, updates, userId, userRole);
+  }
+
+  // ── Category Control Center: Swap bracket slot ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('event-categories/:id/bracket/swap')
+  async swapBracketSlots(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { matchId: string; slot: 'home' | 'away'; teamId: string },
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.swapBracketSlots(id, body.matchId, body.slot, body.teamId, userId, userRole);
   }
 }

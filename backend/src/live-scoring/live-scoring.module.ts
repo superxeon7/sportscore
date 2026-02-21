@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MatchesModule } from '../matches/matches.module';
+import { TournamentsModule } from '../tournaments/tournaments.module';
+import { StandingsModule } from '../standings/standings.module';
 
 // Gateway & services
 import { LiveScoringGateway } from './live-scoring.gateway';
@@ -22,6 +24,8 @@ import { OwnershipService } from '../common/ownership.service';
 @Module({
   imports: [
     MatchesModule,
+    TournamentsModule,
+    StandingsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

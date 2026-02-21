@@ -9,6 +9,9 @@ import { RedisService } from '../redis/redis.service';
 import { MatchEventType, MatchStatus } from '@prisma/client';
 import { ScoringEngineFactory } from './scoring/scoring-engine.factory';
 import { MatchesService } from '../matches/matches.service';
+import { BracketAdvancementService } from '../tournaments/bracket-advancement.service';
+import { SwissSystemService } from '../tournaments/swiss-system.service';
+import { StandingsService } from '../standings/standings.service';
 import {
   MatchEventRecord,
   MatchState,
@@ -42,6 +45,9 @@ export class LiveScoringService {
     private readonly redis: RedisService,
     private readonly engineFactory: ScoringEngineFactory,
     private readonly matchesService: MatchesService,
+    private readonly bracketAdvancement: BracketAdvancementService,
+    private readonly swissSystemService: SwissSystemService,
+    private readonly standingsService: StandingsService,
   ) { }
 
   // -------------------------------------------------------------------
@@ -328,6 +334,21 @@ export class LiveScoringService {
     // Auto-generate POTM (non-blocking; draw → skipped inside the method)
     this.matchesService.autoGeneratePotm(matchId).catch((err) =>
       this.logger.error(`POTM auto-generate failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-advance bracket (non-blocking)
+    this.bracketAdvancement.advanceFromMatch(matchId).catch((err) =>
+      this.logger.error(`Bracket advancement failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-complete Swiss round (non-blocking)
+    this.swissSystemService.checkRoundCompletion(matchId).catch((err) =>
+      this.logger.error(`Swiss round completion check failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-update standings (non-blocking) – covers group & special group stages
+    this.standingsService.updateAfterMatch(matchId).catch((err) =>
+      this.logger.error(`Standings update failed for match ${matchId}: ${err?.message}`),
     );
 
     return state;
@@ -805,5 +826,41 @@ export class LiveScoringService {
 
   async cacheMatchState(matchId: string, state: MatchState): Promise<void> {
     await this.redis.set(`${CACHE_PREFIX}${matchId}`, state, CACHE_TTL);
+  }
+
+  // -------------------------------------------------------------------
+  // Penalty shootout
+  // -------------------------------------------------------------------
+
+  /**
+   * Set penalty shootout scores for a match.
+   * Updates the Match record and marks isPenaltyUsed = true.
+   */
+  async setPenaltyScore(
+    matchId: string,
+    homePenaltyScore: number,
+    awayPenaltyScore: number,
+  ): Promise<{ homePenaltyScore: number; awayPenaltyScore: number; isPenaltyUsed: boolean }> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+    });
+
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    await this.prisma.match.update({
+      where: { id: matchId },
+      data: {
+        homePenaltyScore,
+        awayPenaltyScore,
+        isPenaltyUsed: true,
+      },
+    });
+
+    // Invalidate cache so next state load picks up penalty data
+    await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+
+    return { homePenaltyScore, awayPenaltyScore, isPenaltyUsed: true };
   }
 }

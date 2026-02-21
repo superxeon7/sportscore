@@ -29,6 +29,8 @@ enum TournamentType {
   LEAGUE
   KNOCKOUT
   GROUP_KNOCKOUT
+  DOUBLE_ELIMINATION
+  SWISS
   CUSTOM
 }
 
@@ -108,8 +110,19 @@ enum Gender {
 
 enum StageType {
   GROUP
+  SPECIAL_GROUP
+  GROUP_NEIGHBOR
   KNOCKOUT
   LEAGUE
+  DOUBLE_ELIMINATION
+  SWISS
+}
+
+enum BracketType {
+  UPPER
+  LOWER
+  GRAND_FINAL
+  RESET_FINAL
 }
 
 enum OfficialRole {
@@ -227,6 +240,7 @@ model EventCategory {
   categoryOfficials  CategoryOfficial[]
   stages             CategoryStage[]
   categoryGroups     CategoryGroup[]
+  swissRounds        SwissRound[]
 
   @@unique([eventId, name])
   @@index([eventId])
@@ -240,7 +254,10 @@ model CategoryStage {
   stageType       StageType @map("stage_type")
   groupCount      Int?      @map("group_count")
   qualifyPerGroup Int?      @map("qualify_per_group")
+  matchPerTeam    Int?      @map("match_per_team")
+  penaltyEnabled  Boolean   @default(false) @map("penalty_enabled")
   status          String    @default("PENDING")
+  settingsJson    Json      @default("{}") @map("settings_json")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -285,6 +302,25 @@ model CategoryGroup {
   @@map("category_groups")
 }
 
+model SwissRound {
+  id           String @id @default(uuid())
+  tournamentId String @map("tournament_id")
+  categoryId   String @map("category_id")
+  roundNumber  Int    @map("round_number")
+  status       String @default("DRAFT") // DRAFT | ACTIVE | COMPLETED
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tournament Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  category   EventCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  matches    Match[]
+
+  @@unique([tournamentId, roundNumber])
+  @@index([tournamentId])
+  @@index([categoryId])
+  @@map("swiss_rounds")
+}
+
 model Tournament {
   id     String           @id @default(uuid())
   name   String
@@ -302,6 +338,7 @@ model Tournament {
   eventCategory EventCategory? @relation(fields: [eventCategoryId], references: [id])
   matches       Match[]
   standings     Standing[]
+  swissRounds   SwissRound[]
 
   @@index([eventId])
   @@index([eventCategoryId])
@@ -417,6 +454,24 @@ model Match {
   injuryTimeMinutes    Int?        @map("injury_time_minutes")
   metadata             Json        @default("{}")
 
+  // ── Penalty fields ──
+  homePenaltyScore     Int?        @map("home_penalty_score")
+  awayPenaltyScore     Int?        @map("away_penalty_score")
+  isPenaltyUsed        Boolean     @default(false) @map("is_penalty_used")
+
+  // ── Swiss fields ──
+  swissRoundId     String?       @map("swiss_round_id")
+
+  // ── Double Elimination bracket fields ──
+  bracket          BracketType?  @map("bracket")
+  matchIndex       Int?          @map("match_index")
+  winnerToMatchId  String?       @map("winner_to_match_id")
+  loserToMatchId   String?       @map("loser_to_match_id")
+  sourceMatchAId   String?       @map("source_match_a_id")
+  sourceMatchBId   String?       @map("source_match_b_id")
+  isGrandFinal     Boolean       @default(false) @map("is_grand_final")
+  isResetFinal     Boolean       @default(false) @map("is_reset_final")
+
   tournamentId          String  @map("tournament_id")
   homeTeamId            String  @map("home_team_id")
   awayTeamId            String  @map("away_team_id")
@@ -433,6 +488,18 @@ model Match {
   eventCategory    EventCategory? @relation(fields: [eventCategoryId], references: [id])
   categoryGroup    CategoryGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   playerOfTheMatch Player?        @relation("MatchPOTM", fields: [playerOfTheMatchId], references: [id])
+  swissRound       SwissRound?    @relation(fields: [swissRoundId], references: [id], onDelete: SetNull)
+
+  // ── Double Elimination self-relations ──
+  winnerToMatch      Match?  @relation("WinnerAdvance", fields: [winnerToMatchId], references: [id])
+  loserToMatch       Match?  @relation("LoserDrop", fields: [loserToMatchId], references: [id])
+  sourceMatchA       Match?  @relation("SourceA", fields: [sourceMatchAId], references: [id])
+  sourceMatchB       Match?  @relation("SourceB", fields: [sourceMatchBId], references: [id])
+  winnerFromMatches  Match[] @relation("WinnerAdvance")
+  loserFromMatches   Match[] @relation("LoserDrop")
+  sourceAMatches     Match[] @relation("SourceA")
+  sourceBMatches     Match[] @relation("SourceB")
+
   matchScore       MatchScore?
   matchEvents      MatchEvent[]
   matchLineups     MatchLineup[]
@@ -444,6 +511,10 @@ model Match {
   @@index([eventCategoryId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([bracket, round])
+  @@index([winnerToMatchId])
+  @@index([loserToMatchId])
+  @@index([swissRoundId])
   @@map("matches")
 }
 
@@ -527,19 +598,21 @@ model MatchLineupPlayer {
 }
 
 model Standing {
-  id             String @id @default(uuid())
-  position       Int    @default(0)
-  played         Int    @default(0)
-  won            Int    @default(0)
-  drawn          Int    @default(0)
-  lost           Int    @default(0)
-  goalsFor       Int    @default(0) @map("goals_for")
-  goalsAgainst   Int    @default(0) @map("goals_against")
-  goalDifference Int    @default(0) @map("goal_difference")
-  points         Int    @default(0)
-  group          String?
-  form           String?
-  extraData      Json   @default("{}") @map("extra_data")
+  id              String @id @default(uuid())
+  position        Int    @default(0)
+  played          Int    @default(0)
+  won             Int    @default(0)
+  drawn           Int    @default(0)
+  lost            Int    @default(0)
+  goalsFor        Int    @default(0) @map("goals_for")
+  goalsAgainst    Int    @default(0) @map("goals_against")
+  goalDifference  Int    @default(0) @map("goal_difference")
+  points          Int    @default(0)
+  penaltyWins     Int    @default(0) @map("penalty_wins")
+  penaltyLosses   Int    @default(0) @map("penalty_losses")
+  group           String?
+  form            String?
+  extraData       Json   @default("{}") @map("extra_data")
 
   tournamentId String @map("tournament_id")
   teamId       String @map("team_id")

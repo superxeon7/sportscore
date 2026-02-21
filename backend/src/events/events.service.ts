@@ -13,9 +13,14 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
 
+import { SwissSystemService } from '../tournaments/swiss-system.service';
+
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly swissSystemService: SwissSystemService,
+  ) { }
 
   async create(dto: CreateEventDto, organizerId: string) {
     const existingSlug = await this.prisma.event.findUnique({
@@ -750,6 +755,9 @@ export class EventsService {
         organizer: {
           select: { id: true, firstName: true, lastName: true },
         },
+        tournaments: {
+          select: { id: true, type: true, eventCategoryId: true },
+        },
         categories: {
           include: {
             stages: { orderBy: { stageOrder: 'asc' } },
@@ -785,48 +793,67 @@ export class EventsService {
     // All non-draft/cancelled matches for all categories
     const allMatches = categoryIds.length > 0
       ? await this.prisma.match.findMany({
-          where: {
-            eventCategoryId: { in: categoryIds },
-            status: { notIn: [MatchStatus.DRAFT, MatchStatus.CANCELLED] },
+        where: {
+          eventCategoryId: { in: categoryIds },
+          status: { notIn: [MatchStatus.DRAFT, MatchStatus.CANCELLED] },
+        },
+        include: {
+          homeTeam: {
+            select: { id: true, name: true, shortName: true, logoUrl: true },
           },
-          include: {
-            homeTeam: {
-              select: { id: true, name: true, shortName: true, logoUrl: true },
-            },
-            awayTeam: {
-              select: { id: true, name: true, shortName: true, logoUrl: true },
-            },
-            matchScore: true,
+          awayTeam: {
+            select: { id: true, name: true, shortName: true, logoUrl: true },
           },
-          orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }],
-        })
+          matchScore: true,
+        },
+        orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }],
+      })
       : [];
 
     // GOAL events for top scorer calculation
     const matchIds = allMatches.map((m) => m.id);
     const goalEvents = matchIds.length > 0
       ? await this.prisma.matchEvent.findMany({
-          where: {
-            matchId: { in: matchIds },
-            type: MatchEventType.GOAL,
-          },
-          select: {
-            id: true,
-            matchId: true,
-            player: {
-              select: {
-                id: true,
-                fullName: true,
-                photoUrl: true,
-                teamId: true,
-                team: {
-                  select: { id: true, name: true, shortName: true, logoUrl: true },
-                },
+        where: {
+          matchId: { in: matchIds },
+          type: MatchEventType.GOAL,
+        },
+        select: {
+          id: true,
+          matchId: true,
+          player: {
+            select: {
+              id: true,
+              fullName: true,
+              photoUrl: true,
+              teamId: true,
+              team: {
+                select: { id: true, name: true, shortName: true, logoUrl: true },
               },
             },
           },
-        })
+        },
+      })
       : [];
+
+    const swissTournaments = event.tournaments.filter((t) => t.type === 'SWISS');
+    const swissDataMap = new Map<string, any>();
+
+    if (swissTournaments.length > 0) {
+      await Promise.all(
+        swissTournaments.map(async (t) => {
+          if (!t.eventCategoryId) return;
+          const [standings, roundsData] = await Promise.all([
+            this.swissSystemService.getStandings(t.id),
+            this.swissSystemService.getRounds(t.id),
+          ]);
+          swissDataMap.set(t.eventCategoryId, {
+            standings: standings.data,
+            rounds: roundsData.rounds,
+          });
+        }),
+      );
+    }
 
     // Per-category processing
     const categories = event.categories.map((cat) => {
@@ -837,7 +864,10 @@ export class EventsService {
       const catGoalEvents = goalEvents.filter((ge) => catMatchIds.has(ge.matchId));
 
       const groupMatches = catMatches.filter((m) => m.stageType === 'GROUP');
-      const knockoutMatches = catMatches.filter((m) => m.stageType !== 'GROUP');
+      const knockoutMatches = catMatches.filter((m) => m.stageType === 'KNOCKOUT' || m.stageType === 'DOUBLE_ELIMINATION');
+
+      // Swiss matches are handled in swissDataMap, but if we want to include them in allMatches list:
+      const swissMatches = catMatches.filter((m) => m.stageType === 'SWISS');
 
       const sortedGroupMatches = [...groupMatches].sort((a, b) => {
         const gA = a.groupName ?? '';
@@ -849,6 +879,13 @@ export class EventsService {
       const sortedKnockoutMatches = [...knockoutMatches].sort((a, b) => {
         const rA = a.round ?? 999;
         const rB = b.round ?? 999;
+        if (rA !== rB) return rA - rB;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+
+      const sortedSwissMatches = [...swissMatches].sort((a, b) => {
+        const rA = a.round ?? 0;
+        const rB = b.round ?? 0;
         if (rA !== rB) return rA - rB;
         return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
       });
@@ -965,6 +1002,8 @@ export class EventsService {
 
       const topScorers = Object.values(scorerMap).sort((a, b) => b.goals - a.goals);
 
+      const swissData = swissDataMap.get(cat.id);
+
       return {
         id: cat.id,
         name: cat.name,
@@ -987,7 +1026,9 @@ export class EventsService {
           groupName: ct.categoryGroup?.name ?? null,
         })),
         groupStandings,
-        allMatches: [...sortedGroupMatches, ...sortedKnockoutMatches],
+        swissStandings: swissData?.standings ?? [],
+        swissRounds: swissData?.rounds ?? [],
+        allMatches: [...sortedGroupMatches, ...sortedKnockoutMatches, ...sortedSwissMatches],
         knockoutMatches: sortedKnockoutMatches,
         topScorers,
       };

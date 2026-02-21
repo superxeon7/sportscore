@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { apiGet } from '@/lib/api/client';
 import { Match as LibMatch } from '@/lib/types';
 import BracketView from '@/components/tournament/bracket-view';
+import DoubleEliminationBracket from '@/components/tournaments/DoubleEliminationBracket';
 import {
   ArrowLeft,
   Calendar,
@@ -100,6 +101,35 @@ interface CategoryData {
   allMatches: PublicMatch[];
   knockoutMatches: PublicMatch[];
   topScorers: TopScorer[];
+  swissStandings?: SwissStandingRow[];
+  swissRounds?: SwissRound[];
+}
+
+interface SwissStandingRow {
+  position: number;
+  teamId: string;
+  team: {
+    id: string;
+    name: string;
+    shortName?: string;
+    logoUrl?: string;
+  } | null;
+  played: number;
+  win: number;
+  draw: number;
+  lose: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  points: number;
+  byeCount: number;
+}
+
+interface SwissRound {
+  id: string;
+  roundNumber: number;
+  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
+  matches: PublicMatch[];
 }
 
 interface TournamentData {
@@ -199,14 +229,14 @@ const EVENT_STATUS_STYLES: Record<string, string> = {
 };
 
 const MATCH_STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  SCHEDULED:  { label: 'Terjadwal', cls: 'bg-slate-500/15 text-slate-400' },
-  WARMUP:     { label: 'Pemanasan', cls: 'bg-amber-500/15 text-amber-400' },
-  LIVE:       { label: 'LIVE',      cls: 'bg-red-500/15 text-red-400 animate-pulse' },
-  HALF_TIME:  { label: 'Jeda',      cls: 'bg-amber-500/15 text-amber-400' },
-  PAUSED:     { label: 'Ditunda',   cls: 'bg-amber-500/15 text-amber-400' },
-  COMPLETED:  { label: 'Selesai',   cls: 'bg-emerald-500/15 text-emerald-400' },
-  CANCELLED:  { label: 'Batal',     cls: 'bg-red-500/15 text-red-400' },
-  POSTPONED:  { label: 'Ditunda',   cls: 'bg-orange-500/15 text-orange-400' },
+  SCHEDULED: { label: 'Terjadwal', cls: 'bg-slate-500/15 text-slate-400' },
+  WARMUP: { label: 'Pemanasan', cls: 'bg-amber-500/15 text-amber-400' },
+  LIVE: { label: 'LIVE', cls: 'bg-red-500/15 text-red-400 animate-pulse' },
+  HALF_TIME: { label: 'Jeda', cls: 'bg-amber-500/15 text-amber-400' },
+  PAUSED: { label: 'Ditunda', cls: 'bg-amber-500/15 text-amber-400' },
+  COMPLETED: { label: 'Selesai', cls: 'bg-emerald-500/15 text-emerald-400' },
+  CANCELLED: { label: 'Batal', cls: 'bg-red-500/15 text-red-400' },
+  POSTPONED: { label: 'Ditunda', cls: 'bg-orange-500/15 text-orange-400' },
 };
 
 function MatchStatusBadge({ status }: { status: string }) {
@@ -397,6 +427,54 @@ function StandingsTable({ rows }: { rows: StandingRow[] }) {
   );
 }
 
+function SwissStandingsTable({ rows }: { rows: SwissStandingRow[] }) {
+  if (!rows || rows.length === 0) return null;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-white/[0.06]">
+            <th className="py-2 pr-2 text-left text-xs font-semibold text-slate-500 w-8">#</th>
+            <th className="py-2 text-left text-xs font-semibold text-slate-500">Tim</th>
+            <th className="py-2 px-2 text-center text-xs font-semibold text-slate-500 w-8">M</th>
+            <th className="py-2 px-2 text-center text-xs font-semibold text-slate-500 w-8">P</th>
+            <th className="py-2 pl-2 text-center text-xs font-semibold text-slate-500 w-10">Poin</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.teamId} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+              <td className="py-2 pr-2 text-slate-500 text-xs font-medium">{row.position}</td>
+              <td className="py-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {row.team?.logoUrl ? (
+                      <img src={row.team.logoUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[8px] font-bold text-slate-400">
+                        {(row.team?.shortName || row.team?.name || '?').substring(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-medium text-white text-xs truncate max-w-[120px]">
+                    {row.team?.name || 'Unknown'}
+                  </span>
+                </div>
+              </td>
+              <td className="py-2 px-2 text-center text-slate-400 text-xs">{row.played}</td>
+              <td className="py-2 px-2 text-center text-slate-400 text-xs whitespace-nowrap">
+                {row.goalsFor}:{row.goalsAgainst}
+              </td>
+              <td className="py-2 pl-2 text-center font-bold text-emerald-400 text-sm">{row.points}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Category section header ──────────────────────────────────────────────────
 
 function CategoryHeader({ category }: { category: CategoryData }) {
@@ -435,6 +513,10 @@ function TurnamanTab({ categories }: { categories: CategoryData[] }) {
       {categories.map((cat) => {
         const hasGroups = Object.keys(cat.groupStandings).length > 0;
         const hasKnockout = cat.knockoutMatches.length > 0;
+        const hasDoubleElim = cat.stages?.some(
+          (s) => s.stageType === 'DOUBLE_ELIMINATION'
+        );
+        const hasSwiss = cat.stages?.some((s) => s.stageType === 'SWISS');
 
         return (
           <div key={cat.id}>
@@ -457,8 +539,18 @@ function TurnamanTab({ categories }: { categories: CategoryData[] }) {
               </div>
             )}
 
-            {/* Knockout bracket */}
-            {hasKnockout && (
+            {/* Double Elimination bracket */}
+            {hasDoubleElim && (
+              <div className="mb-8">
+                <SectionLabel label="Double Elimination Bracket" icon={<Trophy className="w-4 h-4 text-yellow-400" />} />
+                <div className="glass-card p-4">
+                  <DEBracketLoader categoryId={cat.id} />
+                </div>
+              </div>
+            )}
+
+            {/* Standard Knockout bracket (only if not DE) */}
+            {hasKnockout && !hasDoubleElim && (
               <div>
                 <SectionLabel label="Fase Gugur" icon={<Trophy className="w-4 h-4 text-slate-400" />} />
                 <div className="glass-card p-4">
@@ -467,13 +559,83 @@ function TurnamanTab({ categories }: { categories: CategoryData[] }) {
               </div>
             )}
 
-            {!hasGroups && !hasKnockout && (
+            {/* Swiss System */}
+            {hasSwiss && (
+              <div className="space-y-8">
+                {/* Standings */}
+                {cat.swissStandings && cat.swissStandings.length > 0 && (
+                  <div>
+                    <SectionLabel label="Klasemen Swiss" icon={<Users className="w-4 h-4 text-emerald-400" />} />
+                    <div className="glass-card p-4">
+                      <SwissStandingsTable rows={cat.swissStandings} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Rounds */}
+                {cat.swissRounds && cat.swissRounds.length > 0 && (
+                  <div className="space-y-6">
+                    <SectionLabel label="Pertandingan Swiss" icon={<Calendar className="w-4 h-4 text-slate-400" />} />
+                    <div className="space-y-6">
+                      {[...cat.swissRounds].reverse().map((round) => (
+                        <div key={round.id}>
+                          <h4 className="text-sm font-bold text-slate-400 mb-3 ml-1">
+                            Ronde {round.roundNumber} <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.05] ml-2 text-slate-500">{round.status}</span>
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {round.matches.map((m) => (
+                              <MatchCard key={m.id} match={m} onSelect={() => { }} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!hasGroups && !hasKnockout && !hasDoubleElim && !hasSwiss && (
               <EmptyState message="Pertandingan belum dimulai." />
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+function DEBracketLoader({ categoryId }: { categoryId: string }) {
+  const [bracketData, setBracketData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiGet<any>(`/event-categories/${categoryId}/bracket`)
+      .then((res) => setBracketData(res))
+      .catch(() => { })
+      .finally(() => setLoading(false));
+  }, [categoryId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!bracketData || bracketData.type !== 'DOUBLE_ELIMINATION') {
+    return <EmptyState message="Bracket belum tersedia." />;
+  }
+
+  return (
+    <DoubleEliminationBracket
+      upper={bracketData.data.upper}
+      lower={bracketData.data.lower}
+      grandFinal={bracketData.data.grandFinal}
+      resetFinal={bracketData.data.resetFinal}
+      seeding={bracketData.data.seeding}
+    />
   );
 }
 
@@ -1192,9 +1354,8 @@ function MatchDetailModal({ matchId, onClose }: { matchId: string; onClose: () =
                           className={`flex items-center gap-2 ${isAway && !isHome ? 'flex-row-reverse' : ''}`}
                         >
                           <div
-                            className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/[0.05] ${
-                              isAway && !isHome ? 'flex-row-reverse' : ''
-                            }`}
+                            className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/[0.05] ${isAway && !isHome ? 'flex-row-reverse' : ''
+                              }`}
                           >
                             {ev.minute != null && (
                               <span className="text-[11px] font-bold text-slate-400 tabular-nums w-7 flex-shrink-0 text-center">
@@ -1247,10 +1408,10 @@ function MatchDetailModal({ matchId, onClose }: { matchId: string; onClose: () =
 type TabKey = 'turnamen' | 'tim' | 'pertandingan' | 'topskor';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'turnamen',     label: 'Turnamen' },
-  { key: 'tim',          label: 'Tim' },
+  { key: 'turnamen', label: 'Turnamen' },
+  { key: 'tim', label: 'Tim' },
   { key: 'pertandingan', label: 'Pertandingan' },
-  { key: 'topskor',      label: 'Top Skor' },
+  { key: 'topskor', label: 'Top Skor' },
 ];
 
 export default function PublicEventPage() {
@@ -1406,12 +1567,12 @@ export default function PublicEventPage() {
 
       {/* ── Tab content ── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'turnamen'     && <TurnamanTab     categories={categories} />}
-        {activeTab === 'tim'          && <TimTab           categories={categories} />}
+        {activeTab === 'turnamen' && <TurnamanTab categories={categories} />}
+        {activeTab === 'tim' && <TimTab categories={categories} />}
         {activeTab === 'pertandingan' && (
           <PertandinganTab categories={categories} onSelectMatch={setSelectedMatchId} />
         )}
-        {activeTab === 'topskor'      && <TopSkorTab       categories={categories} />}
+        {activeTab === 'topskor' && <TopSkorTab categories={categories} />}
       </div>
 
       {/* ── Match Detail Modal ── */}

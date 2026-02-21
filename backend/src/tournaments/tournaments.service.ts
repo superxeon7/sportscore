@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  BracketType,
   MatchStatus,
   TournamentStatus,
   TournamentType,
@@ -15,6 +16,8 @@ import { CreateTournamentDto } from './dto/create-tournament.dto';
 import { UpdateTournamentDto } from './dto/update-tournament.dto';
 import { LeagueStrategy } from './strategies/league.strategy';
 import { KnockoutStrategy } from './strategies/knockout.strategy';
+import { DoubleEliminationStrategy } from './strategies/double-elimination.strategy';
+import { SpecialGroupStrategy } from './strategies/special-group.strategy';
 import { TournamentStrategy } from './strategies/tournament-strategy.interface';
 
 @Injectable()
@@ -25,12 +28,17 @@ export class TournamentsService {
     private readonly prisma: PrismaService,
     private readonly leagueStrategy: LeagueStrategy,
     private readonly knockoutStrategy: KnockoutStrategy,
+    private readonly doubleEliminationStrategy: DoubleEliminationStrategy,
+    private readonly specialGroupStrategy: SpecialGroupStrategy,
   ) {
     this.strategies = {
       [TournamentType.LEAGUE]: this.leagueStrategy,
       [TournamentType.KNOCKOUT]: this.knockoutStrategy,
       [TournamentType.GROUP_KNOCKOUT]: this.leagueStrategy,
+      [TournamentType.DOUBLE_ELIMINATION]: this.doubleEliminationStrategy,
       [TournamentType.CUSTOM]: this.leagueStrategy,
+      SPECIAL_GROUP: this.specialGroupStrategy,
+      GROUP_NEIGHBOR: this.specialGroupStrategy,
     };
   }
 
@@ -430,23 +438,104 @@ export class TournamentsService {
     const config = (tournament.config as Record<string, unknown>) ?? {};
     const fixtureMatches = strategy.generateFixtures(teamIds, config);
 
+    const BYE_TEAM = '__BYE__';
+    const hasBracketLinks = fixtureMatches.some((f) => f._tempId);
+
     // Set a default scheduled date for the fixtures
     const baseDate = new Date();
 
-    const matchCreateData = fixtureMatches.map((fixture) => ({
-      tournamentId: tournament.id,
-      homeTeamId: fixture.homeTeamId,
-      awayTeamId: fixture.awayTeamId,
-      eventCategoryId: tournament.eventCategoryId,
-      round: fixture.round,
-      matchDay: fixture.matchDay,
-      scheduledAt: fixture.scheduledAt ?? new Date(baseDate.getTime() + fixture.matchDay * 86400000),
-      status: MatchStatus.PUBLISHED,
-    }));
+    if (hasBracketLinks) {
+      // ── Double Elimination: create matches one-by-one, resolve linkage ──
+      const tempToRealId = new Map<string, string>();
+      const pendingLinks: Array<{
+        matchId: string;
+        winnerTo?: string;
+        loserTo?: string;
+        sourceA?: string;
+        sourceB?: string;
+      }> = [];
 
-    await this.prisma.match.createMany({
-      data: matchCreateData,
-    });
+      for (const fixture of fixtureMatches) {
+        // Replace BYE placeholder with first team (Prisma FK needs a valid team)
+        const homeId = fixture.homeTeamId === BYE_TEAM ? teamIds[0] : fixture.homeTeamId;
+        const awayId = fixture.awayTeamId === BYE_TEAM ? teamIds[0] : fixture.awayTeamId;
+
+        const bracketVal = fixture.bracket as BracketType | undefined;
+
+        const created = await this.prisma.match.create({
+          data: {
+            tournamentId: tournament.id,
+            homeTeamId: homeId,
+            awayTeamId: awayId,
+            eventCategoryId: tournament.eventCategoryId,
+            round: fixture.round,
+            matchDay: fixture.matchDay,
+            scheduledAt: fixture.scheduledAt ?? new Date(baseDate.getTime() + fixture.matchDay * 86400000),
+            status: fixture.isResetFinal ? MatchStatus.DRAFT : MatchStatus.DRAFT,
+            stageType: fixture.stageType ?? 'DOUBLE_ELIMINATION',
+            bracket: bracketVal,
+            matchIndex: fixture.matchIndex,
+            isGrandFinal: fixture.isGrandFinal ?? false,
+            isResetFinal: fixture.isResetFinal ?? false,
+          },
+        });
+
+        if (fixture._tempId) {
+          tempToRealId.set(fixture._tempId, created.id);
+        }
+
+        pendingLinks.push({
+          matchId: created.id,
+          winnerTo: fixture._winnerTo,
+          loserTo: fixture._loserTo,
+          sourceA: fixture._sourceA,
+          sourceB: fixture._sourceB,
+        });
+      }
+
+      // Resolve temp IDs to real IDs
+      const updates: Promise<unknown>[] = [];
+      for (const link of pendingLinks) {
+        const data: Record<string, string> = {};
+        if (link.winnerTo && tempToRealId.has(link.winnerTo)) {
+          data.winnerToMatchId = tempToRealId.get(link.winnerTo)!;
+        }
+        if (link.loserTo && tempToRealId.has(link.loserTo)) {
+          data.loserToMatchId = tempToRealId.get(link.loserTo)!;
+        }
+        if (link.sourceA && tempToRealId.has(link.sourceA)) {
+          data.sourceMatchAId = tempToRealId.get(link.sourceA)!;
+        }
+        if (link.sourceB && tempToRealId.has(link.sourceB)) {
+          data.sourceMatchBId = tempToRealId.get(link.sourceB)!;
+        }
+        if (Object.keys(data).length > 0) {
+          updates.push(
+            this.prisma.match.update({
+              where: { id: link.matchId },
+              data,
+            }),
+          );
+        }
+      }
+      await Promise.all(updates);
+    } else {
+      // ── Legacy path: bulk create (league / knockout) ──
+      const matchCreateData = fixtureMatches.map((fixture) => ({
+        tournamentId: tournament.id,
+        homeTeamId: fixture.homeTeamId,
+        awayTeamId: fixture.awayTeamId,
+        eventCategoryId: tournament.eventCategoryId,
+        round: fixture.round,
+        matchDay: fixture.matchDay,
+        scheduledAt: fixture.scheduledAt ?? new Date(baseDate.getTime() + fixture.matchDay * 86400000),
+        status: MatchStatus.PUBLISHED,
+      }));
+
+      await this.prisma.match.createMany({
+        data: matchCreateData,
+      });
+    }
 
     // Update tournament status to IN_PROGRESS
     await this.prisma.tournament.update({
@@ -456,5 +545,86 @@ export class TournamentsService {
 
     // Return the tournament with its new matches
     return this.findById(id, userId, userRole);
+  }
+
+  // ── Double Elimination specific endpoints ──────────────────────
+
+  async updateSeeding(
+    id: string,
+    seedingOrder: string[],
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id },
+      include: {
+        event: { select: { organizerId: true } },
+      },
+    });
+
+    if (!tournament) throw new NotFoundException(`Tournament ${id} not found`);
+    if (tournament.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+    if (tournament.status !== TournamentStatus.SETUP) {
+      throw new BadRequestException('Cannot update seeding after tournament has started');
+    }
+
+    // Update seeds on EventCategoryTeam
+    const updates = seedingOrder.map((teamId, index) =>
+      this.prisma.eventCategoryTeam.updateMany({
+        where: {
+          eventCategoryId: tournament.eventCategoryId!,
+          teamId,
+        },
+        data: { seed: index + 1 },
+      }),
+    );
+    await Promise.all(updates);
+
+    return { success: true, seedingOrder };
+  }
+
+  async resetBracket(
+    id: string,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id },
+      include: {
+        event: { select: { organizerId: true } },
+        _count: { select: { matches: true } },
+      },
+    });
+
+    if (!tournament) throw new NotFoundException(`Tournament ${id} not found`);
+    if (tournament.event.organizerId !== userId && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('No permission');
+    }
+
+    // Clear linkage fields first to avoid FK constraint violations
+    await this.prisma.match.updateMany({
+      where: { tournamentId: id },
+      data: {
+        winnerToMatchId: null,
+        loserToMatchId: null,
+        sourceMatchAId: null,
+        sourceMatchBId: null,
+      },
+    });
+
+    // Delete all matches
+    await this.prisma.match.deleteMany({
+      where: { tournamentId: id },
+    });
+
+    // Reset status
+    await this.prisma.tournament.update({
+      where: { id },
+      data: { status: TournamentStatus.SETUP },
+    });
+
+    return { success: true };
   }
 }

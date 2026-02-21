@@ -434,6 +434,40 @@ export class LiveScoringGateway
   }
 
   // -------------------------------------------------------------------
+  // Penalty shootout (organizer only — with ownership check)
+  // -------------------------------------------------------------------
+
+  @SubscribeMessage('match:set-penalty-score')
+  async handleSetPenaltyScore(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { matchId: string; homePenaltyScore: number; awayPenaltyScore: number },
+  ): Promise<void> {
+    const { matchId, homePenaltyScore, awayPenaltyScore } = payload;
+    if (!matchId) throw new WsException('matchId is required');
+    if (homePenaltyScore == null || awayPenaltyScore == null) {
+      throw new WsException('homePenaltyScore and awayPenaltyScore are required');
+    }
+
+    await this.assertMatchOwner(client, matchId);
+
+    try {
+      const result = await this.liveScoringService.setPenaltyScore(
+        matchId,
+        homePenaltyScore,
+        awayPenaltyScore,
+      );
+      this.server.to(`match:${matchId}`).emit('match:penalty-score', {
+        matchId,
+        ...result,
+      });
+    } catch (error) {
+      throw new WsException(
+        `Failed to set penalty score: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------
 

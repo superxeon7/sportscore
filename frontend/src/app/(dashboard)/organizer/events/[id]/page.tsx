@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
+
 
 interface Event {
   id: string;
@@ -26,16 +27,6 @@ interface Event {
   location?: string;
   venue?: string;
   maxTeams?: number;
-}
-
-interface Tournament {
-  id: string;
-  name: string;
-  type: string;
-  status: string;
-  config?: Record<string, unknown>;
-  eventId: string;
-  eventCategoryId?: string;
 }
 
 interface Team {
@@ -67,29 +58,7 @@ interface CategoryStage {
   stageOrder: number;
   stageType: string;
   groupCount?: number | null;
-}
-
-interface Match {
-  id: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  homeTeam?: { id: string; name: string; shortName?: string; logoUrl?: string };
-  awayTeam?: { id: string; name: string; shortName?: string; logoUrl?: string };
-  matchScore?: { homeScore: number; awayScore: number };
-  status: string;
-  scheduledAt?: string;
-  round?: number;
-  matchDay?: number;
-  stageType?: string | null;
-  groupId?: string | null;
-  groupName?: string | null;
-  tournamentId: string;
-  tournament?: { id: string; name: string; type: string };
-  eventCategoryId?: string;
-  matchDurationMinutes?: number | null;
-  halfCount?: number | null;
-  breakDurationMinutes?: number | null;
-  injuryTimeMinutes?: number | null;
+  settingsJson?: Record<string, unknown> | null;
 }
 
 interface EventCategory {
@@ -127,8 +96,6 @@ const statusColors: Record<string, string> = {
   POSTPONED: 'bg-slate-700/50 text-slate-300',
 };
 
-const TOURNAMENT_TYPES = ['LEAGUE', 'KNOCKOUT', 'GROUP_KNOCKOUT', 'CUSTOM'];
-
 const SPORT_TYPES = [
   'FUTSAL', 'FOOTBALL', 'BASKETBALL', 'VOLLEYBALL', 'HANDBALL',
   'HOCKEY', 'TENNIS', 'BADMINTON', 'TABLE_TENNIS', 'RUGBY',
@@ -143,12 +110,11 @@ const GENDERS = [
 
 export default function EventManagementPage() {
   const params = useParams();
+  const router = useRouter();
   const eventId = params.id as string;
   const toast = useToast();
 
   const [event, setEvent] = useState<Event | null>(null);
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
   const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +135,7 @@ export default function EventManagementPage() {
     breakDurationMinutes: 10,
     injuryTimeMinutes: 0,
     stageCount: 1,
-    stages: [{ stageOrder: 1, stageType: 'KNOCKOUT' as string, groupCount: 2, qualifyPerGroup: 2 }],
+    stages: [{ stageOrder: 1, stageType: 'KNOCKOUT' as string, groupCount: 2, qualifyPerGroup: 2, matchPerTeam: 3, penaltyEnabled: false, swissRounds: 5, swissHasPlayoff: false, swissPlayoffTop: 4 }],
   });
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [categoryEditForm, setCategoryEditForm] = useState({
@@ -183,7 +149,7 @@ export default function EventManagementPage() {
     breakDurationMinutes: 10,
     injuryTimeMinutes: 0,
     stageCount: 1,
-    stages: [{ stageOrder: 1, stageType: 'KNOCKOUT' as string, groupCount: 2, qualifyPerGroup: 2 }],
+    stages: [{ stageOrder: 1, stageType: 'KNOCKOUT' as string, groupCount: 2, qualifyPerGroup: 2, matchPerTeam: 3, penaltyEnabled: false, swissRounds: 5, swissHasPlayoff: false, swissPlayoffTop: 4 }],
   });
 
   // Edit event state
@@ -191,46 +157,15 @@ export default function EventManagementPage() {
   const [editForm, setEditForm] = useState<Partial<Event>>({});
   const [savingEvent, setSavingEvent] = useState(false);
 
-  // Create tournament modal
-  const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
-  const [tournamentForm, setTournamentForm] = useState({
-    name: '',
-    type: 'LEAGUE',
-    config: '{}',
-    eventCategoryId: '',
-  });
-  const [creatingTournament, setCreatingTournament] = useState(false);
-
   // Add team to category modal
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [teamModalCategoryId, setTeamModalCategoryId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [registeringTeam, setRegisteringTeam] = useState(false);
 
-  // Generate fixtures
-  const [generatingFixtures, setGeneratingFixtures] = useState<string | null>(null);
-  const [generatingGroupFixtures, setGeneratingGroupFixtures] = useState<string | null>(null);
-  const [advancingKnockout, setAdvancingKnockout] = useState<string | null>(null);
-
   // Category groups for the add-team modal dropdown (keyed by categoryId)
   const [categoryStageGroups, setCategoryStageGroups] = useState<Record<string, CategoryGroup[]>>({});
   const [selectedGroupId, setSelectedGroupId] = useState('');
-
-  // Match edit modal
-  const [matchEditModalOpen, setMatchEditModalOpen] = useState(false);
-  const [editingMatch, setEditingMatch] = useState<Match | null>(null);
-  const [matchEditForm, setMatchEditForm] = useState({
-    scheduledAt: '',
-    venue: '',
-    useTimeOverride: false,
-    matchDurationMinutes: 90,
-    halfCount: 2,
-    breakDurationMinutes: 15,
-    injuryTimeMinutes: 0,
-  });
-  const [savingMatch, setSavingMatch] = useState(false);
-  const [publishingMatchId, setPublishingMatchId] = useState<string | null>(null);
-  const [bulkPublishing, setBulkPublishing] = useState(false);
 
   // Publish event state
   const [publishModalOpen, setPublishModalOpen] = useState(false);
@@ -240,17 +175,13 @@ export default function EventManagementPage() {
     setLoading(true);
     setError(null);
     try {
-      const [eventRes, tournamentsRes, matchesRes, categoriesRes] = await Promise.all([
+      const [eventRes, categoriesRes] = await Promise.all([
         apiGet<Event>(`/events/${eventId}`),
-        apiGet<Tournament[] | { data: Tournament[] }>(`/events/${eventId}/tournaments`).catch(() => []),
-        apiGet<Match[] | { data: Match[] }>(`/events/${eventId}/matches`).catch(() => []),
         apiGet<EventCategory[] | { data: EventCategory[] }>(`/events/${eventId}/categories`).catch(() => []),
       ]);
 
       setEvent(eventRes);
       setEditForm(eventRes);
-      setTournaments(Array.isArray(tournamentsRes) ? tournamentsRes : (tournamentsRes as { data: Tournament[] }).data ?? []);
-      setMatches(Array.isArray(matchesRes) ? matchesRes : (matchesRes as { data: Match[] }).data ?? []);
       setCategories(Array.isArray(categoriesRes) ? categoriesRes : (categoriesRes as { data: EventCategory[] }).data ?? []);
 
       // Fetch available teams
@@ -317,90 +248,6 @@ export default function EventManagementPage() {
       toast.error(message);
     } finally {
       setSavingEvent(false);
-    }
-  };
-
-  const handleCreateTournament = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tournamentForm.name.trim()) return;
-
-    setCreatingTournament(true);
-    try {
-      let config = {};
-      try {
-        config = JSON.parse(tournamentForm.config);
-      } catch {
-        // use empty object
-      }
-
-      const body: Record<string, unknown> = {
-        name: tournamentForm.name.trim(),
-        type: tournamentForm.type,
-        config,
-      };
-      if (tournamentForm.eventCategoryId) {
-        body.eventCategoryId = tournamentForm.eventCategoryId;
-      }
-
-      const created = await apiPost<Tournament>(`/events/${eventId}/tournaments`, body);
-      setTournaments((prev) => [...prev, created]);
-      setTournamentModalOpen(false);
-      setTournamentForm({ name: '', type: 'LEAGUE', config: '{}', eventCategoryId: '' });
-      toast.success('Turnamen berhasil dibuat');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal membuat turnamen';
-      toast.error(message);
-    } finally {
-      setCreatingTournament(false);
-    }
-  };
-
-  const handleGenerateFixtures = async (tournamentId: string) => {
-    setGeneratingFixtures(tournamentId);
-    try {
-      await apiPost(`/tournaments/${tournamentId}/generate-fixtures`, {});
-      toast.success('Jadwal berhasil dibuat');
-      const matchesRes = await apiGet<Match[] | { data: Match[] }>(`/events/${eventId}/matches`);
-      setMatches(Array.isArray(matchesRes) ? matchesRes : matchesRes.data ?? []);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal membuat jadwal';
-      toast.error(message);
-    } finally {
-      setGeneratingFixtures(null);
-    }
-  };
-
-  const handleGenerateGroupFixtures = async (categoryId: string) => {
-    setGeneratingGroupFixtures(categoryId);
-    try {
-      await apiPost(`/event-categories/${categoryId}/generate-group-fixtures`, {});
-      toast.success('Jadwal grup berhasil dibuat');
-      const matchesRes = await apiGet<Match[] | { data: Match[] }>(`/events/${eventId}/matches`);
-      setMatches(Array.isArray(matchesRes) ? matchesRes : matchesRes.data ?? []);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal membuat jadwal grup';
-      toast.error(message);
-    } finally {
-      setGeneratingGroupFixtures(null);
-    }
-  };
-
-  const handleAdvanceToKnockout = async (categoryId: string) => {
-    if (!confirm('Lanjutkan ke fase gugur? Pastikan semua pertandingan grup sudah selesai.')) return;
-    setAdvancingKnockout(categoryId);
-    try {
-      const result = await apiPost<{ qualifiedTeams: number; knockoutMatches: number }>(
-        `/event-categories/${categoryId}/advance-knockout`,
-        {},
-      );
-      toast.success(`${result.qualifiedTeams} tim lolos, ${result.knockoutMatches} pertandingan knockout dibuat`);
-      const matchesRes = await apiGet<Match[] | { data: Match[] }>(`/events/${eventId}/matches`);
-      setMatches(Array.isArray(matchesRes) ? matchesRes : matchesRes.data ?? []);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal memajukan ke fase gugur';
-      toast.error(message);
-    } finally {
-      setAdvancingKnockout(null);
     }
   };
 
@@ -471,6 +318,10 @@ export default function EventManagementPage() {
           stageOrder: s.stageOrder,
           stageType: s.stageType,
           ...(s.stageType === 'GROUP' ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup } : {}),
+          ...(s.stageType === 'SPECIAL_GROUP' ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup, matchPerTeam: s.matchPerTeam ?? 3 } : {}),
+          ...(s.stageType === 'GROUP_NEIGHBOR' ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup } : {}),
+          ...(s.stageType === 'SWISS' ? { settingsJson: { rounds: s.swissRounds, hasPlayoff: s.swissHasPlayoff, playoffTop: s.swissPlayoffTop } } : {}),
+          ...(['GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE'].includes(s.stageType) ? { penaltyEnabled: s.penaltyEnabled ?? false } : {}),
         })),
       };
       if (categoryForm.minDateOfBirth) {
@@ -490,14 +341,9 @@ export default function EventManagementPage() {
         breakDurationMinutes: 10,
         injuryTimeMinutes: 0,
         stageCount: 1,
-        stages: [{ stageOrder: 1, stageType: 'KNOCKOUT', groupCount: 2, qualifyPerGroup: 2 }],
+        stages: [{ stageOrder: 1, stageType: 'KNOCKOUT', groupCount: 2, qualifyPerGroup: 2, matchPerTeam: 3, penaltyEnabled: false, swissRounds: 5, swissHasPlayoff: false, swissPlayoffTop: 4 }],
       });
       toast.success('Kategori berhasil dibuat');
-      // Refresh tournaments since auto-created
-      try {
-        const tournamentsRes = await apiGet<Tournament[] | { data: Tournament[] }>(`/events/${eventId}/tournaments`);
-        setTournaments(Array.isArray(tournamentsRes) ? tournamentsRes : (tournamentsRes as { data: Tournament[] }).data ?? []);
-      } catch { /* silent */ }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal membuat kategori';
       toast.error(message);
@@ -543,6 +389,18 @@ export default function EventManagementPage() {
           ...(s.stageType === 'GROUP'
             ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup }
             : {}),
+          ...(s.stageType === 'SPECIAL_GROUP'
+            ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup, matchPerTeam: s.matchPerTeam ?? 3 }
+            : {}),
+          ...(s.stageType === 'GROUP_NEIGHBOR'
+            ? { groupCount: s.groupCount, qualifyPerGroup: s.qualifyPerGroup }
+            : {}),
+          ...(s.stageType === 'SWISS'
+            ? { settingsJson: { rounds: s.swissRounds, hasPlayoff: s.swissHasPlayoff, playoffTop: s.swissPlayoffTop } }
+            : {}),
+          ...(['GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE'].includes(s.stageType)
+            ? { penaltyEnabled: s.penaltyEnabled ?? false }
+            : {}),
         }));
       const updated = await apiPatch<EventCategory>(`/event-categories/${categoryId}`, body);
       setCategories((prev) =>
@@ -553,100 +411,6 @@ export default function EventManagementPage() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal memperbarui kategori';
       toast.error(message);
-    }
-  };
-
-  const openMatchEditModal = (match: Match) => {
-    setEditingMatch(match);
-    const hasOverride = match.matchDurationMinutes != null;
-    setMatchEditForm({
-      scheduledAt: match.scheduledAt ? match.scheduledAt.slice(0, 16) : '',
-      venue: '',
-      useTimeOverride: hasOverride,
-      matchDurationMinutes: match.matchDurationMinutes ?? 90,
-      halfCount: match.halfCount ?? 2,
-      breakDurationMinutes: match.breakDurationMinutes ?? 15,
-      injuryTimeMinutes: match.injuryTimeMinutes ?? 0,
-    });
-    setMatchEditModalOpen(true);
-  };
-
-  const handleSaveMatch = async () => {
-    if (!editingMatch) return;
-    setSavingMatch(true);
-    try {
-      const body: Record<string, unknown> = {};
-      if (matchEditForm.scheduledAt) {
-        body.scheduledAt = new Date(matchEditForm.scheduledAt).toISOString();
-      }
-      if (matchEditForm.useTimeOverride) {
-        body.matchDurationMinutes = matchEditForm.matchDurationMinutes;
-        body.halfCount = matchEditForm.halfCount;
-        body.breakDurationMinutes = matchEditForm.breakDurationMinutes;
-        body.injuryTimeMinutes = matchEditForm.injuryTimeMinutes;
-      } else {
-        body.matchDurationMinutes = null;
-        body.halfCount = null;
-        body.breakDurationMinutes = null;
-        body.injuryTimeMinutes = null;
-      }
-
-      const updated = await apiPatch<Match>(`/matches/${editingMatch.id}`, body);
-      setMatches((prev) =>
-        prev.map((m) => (m.id === editingMatch.id ? { ...m, ...updated } : m)),
-      );
-      setMatchEditModalOpen(false);
-      setEditingMatch(null);
-      toast.success('Pertandingan berhasil diperbarui');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal memperbarui pertandingan';
-      toast.error(message);
-    } finally {
-      setSavingMatch(false);
-    }
-  };
-
-  const handleTogglePublish = async (matchToPublish: Match) => {
-    setPublishingMatchId(matchToPublish.id);
-    try {
-      const endpoint = matchToPublish.status === 'DRAFT'
-        ? `/matches/${matchToPublish.id}/publish`
-        : `/matches/${matchToPublish.id}/unpublish`;
-      const updated = await apiPatch<Match>(endpoint, {});
-      setMatches((prev) =>
-        prev.map((m) => (m.id === matchToPublish.id ? { ...m, ...updated } : m)),
-      );
-      toast.success(
-        matchToPublish.status === 'DRAFT'
-          ? 'Pertandingan berhasil dipublish'
-          : 'Pertandingan berhasil di-unpublish',
-      );
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal mengubah status pertandingan';
-      toast.error(message);
-    } finally {
-      setPublishingMatchId(null);
-    }
-  };
-
-  const handleBulkPublish = async () => {
-    const draftCount = matches.filter((m) => m.status === 'DRAFT').length;
-    if (draftCount === 0) {
-      toast.error('Tidak ada pertandingan DRAFT untuk dipublish');
-      return;
-    }
-    setBulkPublishing(true);
-    try {
-      const result = await apiPatch<{ published: number }>('/matches/bulk-publish', { eventId });
-      setMatches((prev) =>
-        prev.map((m) => (m.status === 'DRAFT' ? { ...m, status: 'PUBLISHED' } : m)),
-      );
-      toast.success(`${result.published} pertandingan berhasil dipublish`);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal mempublish pertandingan';
-      toast.error(message);
-    } finally {
-      setBulkPublishing(false);
     }
   };
 
@@ -679,8 +443,6 @@ export default function EventManagementPage() {
   const tabs = [
     { id: 'details', label: 'Detail' },
     { id: 'categories', label: `Kategori & Tim (${categories.length})` },
-    { id: 'tournaments', label: 'Turnamen' },
-    { id: 'matches', label: `Pertandingan (${matches.length})` },
   ];
 
   // For the add-team-to-category modal: get teams not yet in that category
@@ -748,7 +510,7 @@ export default function EventManagementPage() {
 
       {/* Tabs */}
       <div className="border-b border-white/10">
-        <nav className="flex gap-4">
+        <nav className="flex gap-4 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -1131,6 +893,11 @@ export default function EventManagementPage() {
                                         stageType: 'KNOCKOUT',
                                         groupCount: 2,
                                         qualifyPerGroup: 2,
+                                        matchPerTeam: 3,
+                                        penaltyEnabled: false,
+                                        swissRounds: 5,
+                                        swissHasPlayoff: false,
+                                        swissPlayoffTop: 4,
                                       });
                                     }
                                     return { ...prev, stageCount: count, stages };
@@ -1150,6 +917,9 @@ export default function EventManagementPage() {
                                   stageType: 'KNOCKOUT',
                                   groupCount: 2,
                                   qualifyPerGroup: 2,
+                                  swissRounds: 5,
+                                  swissHasPlayoff: false,
+                                  swissPlayoffTop: 4,
                                 };
                                 return (
                                   <div key={idx} className="p-3 rounded-lg border border-white/10 bg-white/[0.02]">
@@ -1167,11 +937,15 @@ export default function EventManagementPage() {
                                           className="w-full"
                                         >
                                           <option value="GROUP">GROUP</option>
+                                          <option value="SPECIAL_GROUP">SPECIAL GROUP</option>
+                                          <option value="GROUP_NEIGHBOR">GROUP NEIGHBOR</option>
                                           <option value="KNOCKOUT">KNOCKOUT</option>
                                           <option value="LEAGUE">LEAGUE</option>
+                                          <option value="DOUBLE_ELIMINATION">DOUBLE ELIMINATION</option>
+                                          <option value="SWISS">SWISS</option>
                                         </Select>
                                       </div>
-                                      {stage.stageType === 'GROUP' && (
+                                      {(stage.stageType === 'GROUP' || stage.stageType === 'SPECIAL_GROUP' || stage.stageType === 'GROUP_NEIGHBOR') && (
                                         <>
                                           <div>
                                             <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Jumlah Grup</label>
@@ -1200,6 +974,87 @@ export default function EventManagementPage() {
                                                 return { ...prev, stages };
                                               })}
                                             />
+                                          </div>
+                                          {stage.stageType === 'SPECIAL_GROUP' && (
+                                            <div>
+                                              <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Match per Tim</label>
+                                              <Input
+                                                type="number"
+                                                min={1}
+                                                max={20}
+                                                value={stage.matchPerTeam ?? 3}
+                                                onChange={(e) => setCategoryEditForm((prev) => {
+                                                  const stages = [...prev.stages];
+                                                  stages[idx] = { ...stages[idx], matchPerTeam: Number(e.target.value) };
+                                                  return { ...prev, stages };
+                                                })}
+                                              />
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                      {(stage.stageType === 'GROUP' || stage.stageType === 'SPECIAL_GROUP' || stage.stageType === 'GROUP_NEIGHBOR' || stage.stageType === 'LEAGUE') && (
+                                        <div className="col-span-full">
+                                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={stage.penaltyEnabled ?? false}
+                                              onChange={(e) => setCategoryEditForm((prev) => {
+                                                const stages = [...prev.stages];
+                                                stages[idx] = { ...stages[idx], penaltyEnabled: e.target.checked };
+                                                return { ...prev, stages };
+                                              })}
+                                              className="w-3.5 h-3.5 accent-blue-500"
+                                            />
+                                            Aktifkan Adu Penalti (seri → penalti)
+                                          </label>
+                                        </div>
+                                      )}
+                                      {stage.stageType === 'SWISS' && (
+                                        <>
+                                          <div>
+                                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Jumlah Ronde</label>
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              max={20}
+                                              value={stage.swissRounds ?? 5}
+                                              onChange={(e) => setCategoryEditForm((prev) => {
+                                                const stages = [...prev.stages];
+                                                stages[idx] = { ...stages[idx], swissRounds: Number(e.target.value) };
+                                                return { ...prev, stages };
+                                              })}
+                                            />
+                                          </div>
+                                          <div className="flex flex-col gap-1">
+                                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Playoff</label>
+                                            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={stage.swissHasPlayoff ?? false}
+                                                onChange={(e) => setCategoryEditForm((prev) => {
+                                                  const stages = [...prev.stages];
+                                                  stages[idx] = { ...stages[idx], swissHasPlayoff: e.target.checked };
+                                                  return { ...prev, stages };
+                                                })}
+                                                className="w-3.5 h-3.5 accent-blue-500"
+                                              />
+                                              Ada playoff
+                                            </label>
+                                            {stage.swissHasPlayoff && (
+                                              <Input
+                                                type="number"
+                                                min={2}
+                                                max={8}
+                                                value={stage.swissPlayoffTop ?? 4}
+                                                onChange={(e) => setCategoryEditForm((prev) => {
+                                                  const stages = [...prev.stages];
+                                                  stages[idx] = { ...stages[idx], swissPlayoffTop: Number(e.target.value) };
+                                                  return { ...prev, stages };
+                                                })}
+                                                placeholder="Top N tim lolos playoff"
+                                              />
+                                            )}
                                           </div>
                                         </>
                                       )}
@@ -1265,13 +1120,21 @@ export default function EventManagementPage() {
                               const existingStages = cat.stages || [];
                               const stageCount = existingStages.length || 1;
                               const stages = existingStages.length > 0
-                                ? existingStages.map((s, i) => ({
+                                ? existingStages.map((s, i) => {
+                                  const settings = s.settingsJson as { rounds?: number; hasPlayoff?: boolean; playoffTop?: number } | null;
+                                  return {
                                     stageOrder: s.stageOrder ?? i + 1,
                                     stageType: s.stageType,
                                     groupCount: s.groupCount ?? 2,
                                     qualifyPerGroup: 2,
-                                  }))
-                                : [{ stageOrder: 1, stageType: 'KNOCKOUT', groupCount: 2, qualifyPerGroup: 2 }];
+                                    matchPerTeam: (s as any).matchPerTeam ?? 3,
+                                    penaltyEnabled: (s as any).penaltyEnabled ?? false,
+                                    swissRounds: settings?.rounds ?? 5,
+                                    swissHasPlayoff: settings?.hasPlayoff ?? false,
+                                    swissPlayoffTop: settings?.playoffTop ?? 4,
+                                  };
+                                })
+                                : [{ stageOrder: 1, stageType: 'KNOCKOUT', groupCount: 2, qualifyPerGroup: 2, matchPerTeam: 3, penaltyEnabled: false, swissRounds: 5, swissHasPlayoff: false, swissPlayoffTop: 4 }];
                               setCategoryEditForm({
                                 name: cat.name,
                                 sportType: cat.sportType,
@@ -1295,6 +1158,13 @@ export default function EventManagementPage() {
                             onClick={() => handleRemoveCategory(cat.id)}
                           >
                             Hapus
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                            onClick={() => router.push(`/organizer/category/${cat.id}`)}
+                          >
+                            Kelola Kategori
                           </Button>
                         </div>
                       </div>
@@ -1488,6 +1358,11 @@ export default function EventManagementPage() {
                             stageType: 'KNOCKOUT',
                             groupCount: 2,
                             qualifyPerGroup: 2,
+                            matchPerTeam: 3,
+                            penaltyEnabled: false,
+                            swissRounds: 5,
+                            swissHasPlayoff: false,
+                            swissPlayoffTop: 4,
                           });
                         }
                         return { ...prev, stageCount: count, stages };
@@ -1508,6 +1383,9 @@ export default function EventManagementPage() {
                       stageType: 'KNOCKOUT',
                       groupCount: 2,
                       qualifyPerGroup: 2,
+                      swissRounds: 5,
+                      swissHasPlayoff: false,
+                      swissPlayoffTop: 4,
                     };
                     return (
                       <div
@@ -1538,11 +1416,15 @@ export default function EventManagementPage() {
                               className="w-full"
                             >
                               <option value="GROUP">GROUP</option>
+                              <option value="SPECIAL_GROUP">SPECIAL GROUP</option>
+                              <option value="GROUP_NEIGHBOR">GROUP NEIGHBOR</option>
                               <option value="KNOCKOUT">KNOCKOUT</option>
                               <option value="LEAGUE">LEAGUE</option>
+                              <option value="DOUBLE_ELIMINATION">DOUBLE ELIMINATION</option>
+                              <option value="SWISS">SWISS</option>
                             </Select>
                           </div>
-                          {stage.stageType === 'GROUP' && (
+                          {(stage.stageType === 'GROUP' || stage.stageType === 'SPECIAL_GROUP' || stage.stageType === 'GROUP_NEIGHBOR') && (
                             <>
                               <div>
                                 <label className="block text-[10px] font-medium text-slate-400 mb-0.5">
@@ -1585,6 +1467,101 @@ export default function EventManagementPage() {
                                     });
                                   }}
                                 />
+                              </div>
+                              {stage.stageType === 'SPECIAL_GROUP' && (
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Match per Tim</label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={stage.matchPerTeam ?? 3}
+                                    onChange={(e) => {
+                                      setCategoryForm((prev) => {
+                                        const stages = [...prev.stages];
+                                        stages[idx] = { ...stages[idx], matchPerTeam: Number(e.target.value) };
+                                        return { ...prev, stages };
+                                      });
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </>
+                          )}
+                          {(stage.stageType === 'GROUP' || stage.stageType === 'SPECIAL_GROUP' || stage.stageType === 'GROUP_NEIGHBOR' || stage.stageType === 'LEAGUE') && (
+                            <div className="col-span-full">
+                              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={stage.penaltyEnabled ?? false}
+                                  onChange={(e) => {
+                                    setCategoryForm((prev) => {
+                                      const stages = [...prev.stages];
+                                      stages[idx] = { ...stages[idx], penaltyEnabled: e.target.checked };
+                                      return { ...prev, stages };
+                                    });
+                                  }}
+                                  className="w-3.5 h-3.5 accent-blue-500"
+                                />
+                                Aktifkan Adu Penalti (seri → penalti)
+                              </label>
+                            </div>
+                          )}
+                          {stage.stageType === 'SWISS' && (
+                            <>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">
+                                  Jumlah Ronde
+                                </label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={20}
+                                  value={stage.swissRounds ?? 5}
+                                  onChange={(e) => {
+                                    setCategoryForm((prev) => {
+                                      const stages = [...prev.stages];
+                                      stages[idx] = { ...stages[idx], swissRounds: Number(e.target.value) };
+                                      return { ...prev, stages };
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">
+                                  Playoff
+                                </label>
+                                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={stage.swissHasPlayoff ?? false}
+                                    onChange={(e) => {
+                                      setCategoryForm((prev) => {
+                                        const stages = [...prev.stages];
+                                        stages[idx] = { ...stages[idx], swissHasPlayoff: e.target.checked };
+                                        return { ...prev, stages };
+                                      });
+                                    }}
+                                    className="w-3.5 h-3.5 accent-blue-500"
+                                  />
+                                  Ada playoff
+                                </label>
+                                {stage.swissHasPlayoff && (
+                                  <Input
+                                    type="number"
+                                    min={2}
+                                    max={8}
+                                    value={stage.swissPlayoffTop ?? 4}
+                                    onChange={(e) => {
+                                      setCategoryForm((prev) => {
+                                        const stages = [...prev.stages];
+                                        stages[idx] = { ...stages[idx], swissPlayoffTop: Number(e.target.value) };
+                                        return { ...prev, stages };
+                                      });
+                                    }}
+                                    placeholder="Top N tim lolos playoff"
+                                  />
+                                )}
                               </div>
                             </>
                           )}
@@ -1771,569 +1748,6 @@ export default function EventManagementPage() {
         </div>
       )}
 
-      {/* Tournaments Tab */}
-      {activeTab === 'tournaments' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setTournamentModalOpen(true)}>
-              Buat Turnamen
-            </Button>
-          </div>
-
-          {tournaments.length === 0 ? (
-            <Card className="p-8 text-center">
-              <p className="text-slate-500">Belum ada turnamen. Buat kategori dengan format stage untuk auto-generate turnamen.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {tournaments.map((tournament) => {
-                const linkedCategory = categories.find((c) => c.id === tournament.eventCategoryId);
-                const config = (tournament.config || {}) as Record<string, unknown>;
-                const stageType = config.stageType as string | undefined;
-                const isGroupStage = stageType === 'GROUP';
-                const isKnockoutStage = stageType === 'KNOCKOUT';
-                const categoryId = tournament.eventCategoryId;
-
-                return (
-                  <Card key={tournament.id} className="p-4">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <h3 className="font-semibold">{tournament.name}</h3>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <Badge variant="secondary">
-                            {tournament.type.replace(/_/g, ' ')}
-                          </Badge>
-                          <Badge
-                            className={
-                              statusColors[tournament.status] ||
-                              'bg-slate-700/50 text-slate-300'
-                            }
-                          >
-                            {tournament.status}
-                          </Badge>
-                          {stageType && (
-                            <Badge className="bg-indigo-900/50 text-indigo-300">
-                              Stage {String(config.stageOrder || '')}: {stageType}
-                            </Badge>
-                          )}
-                          {linkedCategory && (
-                            <Badge className="bg-emerald-900/50 text-emerald-300">
-                              {linkedCategory.name}
-                            </Badge>
-                          )}
-                          {isGroupStage && !!config.groupCount && (
-                            <Badge className="bg-slate-700/50 text-slate-300">
-                              {String(config.groupCount)} grup, lolos {String(config.qualifyPerGroup ?? 2)}/grup
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!isGroupStage && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleGenerateFixtures(tournament.id)}
-                            disabled={generatingFixtures === tournament.id}
-                          >
-                            {generatingFixtures === tournament.id ? (
-                              <Spinner className="w-4 h-4" />
-                            ) : (
-                              'Buat Jadwal'
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* ── GROUP STAGE: status + generate button ── */}
-                    {isGroupStage && categoryId && (() => {
-                      const catTeams = categories.find((c) => c.id === categoryId)?.categoryTeams || [];
-                      const assignedCount = catTeams.filter((ct) => ct.groupId).length;
-                      const allAssigned = catTeams.length > 0 && assignedCount === catTeams.length;
-                      return (
-                        <div className="mt-4 border-t border-white/10 pt-3 space-y-3">
-                          {/* Progress info */}
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div>
-                              <p className="text-xs text-slate-400">
-                                {assignedCount}/{catTeams.length} tim sudah dipilih grup
-                              </p>
-                              {!allAssigned && catTeams.length > 0 && (
-                                <p className="text-xs text-amber-400 mt-0.5">
-                                  Pilih grup saat mendaftarkan tim (tab Kategori &amp; Tim).
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleGenerateGroupFixtures(categoryId)}
-                                disabled={!allAssigned || generatingGroupFixtures === categoryId}
-                                title={!allAssigned ? 'Semua tim harus memiliki grup sebelum jadwal dibuat' : ''}
-                              >
-                                {generatingGroupFixtures === categoryId ? (
-                                  <Spinner className="w-4 h-4" />
-                                ) : (
-                                  'Buat Jadwal Grup'
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleAdvanceToKnockout(categoryId)}
-                                disabled={advancingKnockout === categoryId}
-                              >
-                                {advancingKnockout === categoryId ? (
-                                  <Spinner className="w-4 h-4" />
-                                ) : (
-                                  'Lanjut Knockout'
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* Group breakdown from registered teams */}
-                          {catTeams.length > 0 && (() => {
-                            const byGroup = new Map<string, { name: string; teams: typeof catTeams }>();
-                            for (const ct of catTeams) {
-                              if (ct.groupId && ct.categoryGroup) {
-                                if (!byGroup.has(ct.groupId)) {
-                                  byGroup.set(ct.groupId, { name: ct.categoryGroup.name, teams: [] });
-                                }
-                                byGroup.get(ct.groupId)!.teams.push(ct);
-                              }
-                            }
-                            if (byGroup.size === 0) return null;
-                            return (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {Array.from(byGroup.values())
-                                  .sort((a, b) => a.name.localeCompare(b.name))
-                                  .map((g) => (
-                                    <div key={g.name} className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10">
-                                      <p className="text-xs font-semibold text-indigo-300 mb-1">{g.name}</p>
-                                      {g.teams.map((ct) => (
-                                        <p key={ct.teamId} className="text-xs text-slate-300 truncate">
-                                          {ct.team?.name || ct.teamId}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })()}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Create Tournament Modal */}
-          <Modal
-            open={tournamentModalOpen}
-            onClose={() => setTournamentModalOpen(false)}
-          >
-            <form onSubmit={handleCreateTournament} className="space-y-4">
-              <h2 className="text-xl font-bold">Buat Turnamen</h2>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Nama *
-                </label>
-                <Input
-                  value={tournamentForm.name}
-                  onChange={(e) =>
-                    setTournamentForm((prev) => ({
-                      ...prev,
-                      name: e.target.value,
-                    }))
-                  }
-                  placeholder="cth. Babak Grup"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Kategori
-                </label>
-                <Select
-                  value={tournamentForm.eventCategoryId}
-                  onChange={(e) =>
-                    setTournamentForm((prev) => ({
-                      ...prev,
-                      eventCategoryId: e.target.value,
-                    }))
-                  }
-                  className="w-full"
-                >
-                  <option value="">-- Pilih kategori --</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name} ({(cat.categoryTeams || []).length} tim)
-                    </option>
-                  ))}
-                </Select>
-                <p className="text-xs text-slate-500 mt-1">
-                  Diperlukan untuk membuat jadwal otomatis. Tim diambil dari kategori yang dipilih.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Tipe
-                </label>
-                <Select
-                  value={tournamentForm.type}
-                  onChange={(e) =>
-                    setTournamentForm((prev) => ({
-                      ...prev,
-                      type: e.target.value,
-                    }))
-                  }
-                  className="w-full"
-                >
-                  {TOURNAMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Konfigurasi (JSON)
-                </label>
-                <textarea
-                  className="w-full border border-slate-600/60 bg-slate-800/80 text-slate-100 rounded-md px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none"
-                  rows={4}
-                  value={tournamentForm.config}
-                  onChange={(e) =>
-                    setTournamentForm((prev) => ({
-                      ...prev,
-                      config: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setTournamentModalOpen(false)}
-                >
-                  Batal
-                </Button>
-                <Button type="submit" disabled={creatingTournament}>
-                  {creatingTournament ? (
-                    <Spinner className="w-4 h-4" />
-                  ) : (
-                    'Buat'
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Modal>
-        </div>
-      )}
-
-      {/* Matches Tab */}
-      {activeTab === 'matches' && (
-        <div className="space-y-4">
-          {matches.length === 0 ? (
-            <Card className="p-8 text-center">
-              <p className="text-slate-500">
-                Belum ada pertandingan terjadwal. Buat jadwal dari tab Turnamen.
-              </p>
-            </Card>
-          ) : (
-            <>
-              {/* Bulk publish banner */}
-              {matches.some((m) => m.status === 'DRAFT') && (
-                <div className="flex items-center justify-between rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-                  <p className="text-sm text-amber-300">
-                    <span className="font-semibold">{matches.filter((m) => m.status === 'DRAFT').length} pertandingan</span> masih DRAFT dan tidak terlihat publik.
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={handleBulkPublish}
-                    disabled={bulkPublishing}
-                    className="bg-amber-500 hover:bg-amber-400 text-white text-xs font-semibold"
-                  >
-                    {bulkPublishing ? <Spinner className="w-4 h-4" /> : 'Publish Semua'}
-                  </Button>
-                </div>
-              )}
-            <div className="space-y-1">
-              {(() => {
-                // Sort: GROUP stage first (by groupName ASC), then scheduledAt ASC; KNOCKOUT after
-                const sorted = [...matches].sort((a, b) => {
-                  const aIsGroup = a.stageType === 'GROUP';
-                  const bIsGroup = b.stageType === 'GROUP';
-                  if (aIsGroup && !bIsGroup) return -1;
-                  if (!aIsGroup && bIsGroup) return 1;
-                  if (aIsGroup && bIsGroup) {
-                    const nameA = a.groupName || '';
-                    const nameB = b.groupName || '';
-                    if (nameA !== nameB) return nameA.localeCompare(nameB);
-                  }
-                  const dateA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
-                  const dateB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
-                  return dateA - dateB;
-                });
-
-                const elements: React.ReactNode[] = [];
-                let lastGroupName: string | null = null;
-
-                for (const match of sorted) {
-                  // Insert group header label when group changes
-                  if (match.stageType === 'GROUP' && match.groupName && match.groupName !== lastGroupName) {
-                    lastGroupName = match.groupName;
-                    elements.push(
-                      <div key={`label-${match.groupName}`} className="flex items-center gap-2 pt-3 first:pt-0">
-                        <span className="text-xs font-bold tracking-wider text-indigo-300 bg-indigo-900/40 border border-indigo-700/40 px-2 py-0.5 rounded">
-                          [{match.groupName.toUpperCase()}]
-                        </span>
-                        <div className="flex-1 border-t border-indigo-800/40" />
-                      </div>
-                    );
-                  } else if (match.stageType !== 'GROUP' && lastGroupName !== 'KNOCKOUT_SECTION') {
-                    // Separator before knockout section
-                    if (sorted.some((m) => m.stageType === 'GROUP')) {
-                      lastGroupName = 'KNOCKOUT_SECTION';
-                      elements.push(
-                        <div key="label-knockout" className="flex items-center gap-2 pt-3">
-                          <span className="text-xs font-bold tracking-wider text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded">
-                            [KNOCKOUT]
-                          </span>
-                          <div className="flex-1 border-t border-amber-800/30" />
-                        </div>
-                      );
-                    }
-                  }
-
-                  elements.push(
-                    <Card key={match.id} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <span className="font-medium text-right flex-1 truncate">
-                            {match.homeTeam?.name || match.homeTeamId}
-                          </span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xl font-bold">
-                              {match.matchScore?.homeScore ?? '-'}
-                            </span>
-                            <span className="text-slate-500">vs</span>
-                            <span className="text-xl font-bold">
-                              {match.matchScore?.awayScore ?? '-'}
-                            </span>
-                          </div>
-                          <span className="font-medium flex-1 truncate">
-                            {match.awayTeam?.name || match.awayTeamId}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          <Badge
-                            className={
-                              statusColors[match.status] ||
-                              'bg-slate-700/50 text-slate-300'
-                            }
-                          >
-                            {match.status}
-                          </Badge>
-                          {match.scheduledAt && (
-                            <span className="text-xs text-slate-400">
-                              {new Date(match.scheduledAt).toLocaleString()}
-                            </span>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openMatchEditModal(match)}
-                          >
-                            Ubah
-                          </Button>
-                          {(match.status === 'DRAFT' || match.status === 'PUBLISHED') && (
-                            <Button
-                              size="sm"
-                              variant={match.status === 'DRAFT' ? 'default' : 'outline'}
-                              disabled={publishingMatchId === match.id}
-                              onClick={() => handleTogglePublish(match)}
-                            >
-                              {publishingMatchId === match.id ? (
-                                <Spinner className="w-4 h-4" />
-                              ) : match.status === 'DRAFT' ? (
-                                'Publish'
-                              ) : (
-                                'Batalkan Publish'
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      {match.matchDurationMinutes != null && (
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400 border-t border-white/10 pt-2">
-                          <span>Durasi: {match.matchDurationMinutes} menit</span>
-                          <span>Babak: {match.halfCount}</span>
-                          <span>Istirahat: {match.breakDurationMinutes} menit</span>
-                          <span>Injury Time: {match.injuryTimeMinutes} menit</span>
-                          <span className="text-emerald-400 font-medium">Override aktif</span>
-                        </div>
-                      )}
-                    </Card>
-                  );
-                }
-                return elements;
-              })()}
-            </div>
-            </>
-          )}
-
-          {/* Match Edit Modal */}
-          <Modal
-            open={matchEditModalOpen}
-            onClose={() => setMatchEditModalOpen(false)}
-          >
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold">Ubah Pertandingan</h2>
-              {editingMatch && (
-                <p className="text-sm text-slate-400">
-                  {editingMatch.homeTeam?.name || editingMatch.homeTeamId} vs{' '}
-                  {editingMatch.awayTeam?.name || editingMatch.awayTeamId}
-                </p>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Jadwal
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={matchEditForm.scheduledAt}
-                  onChange={(e) =>
-                    setMatchEditForm((prev) => ({
-                      ...prev,
-                      scheduledAt: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              {/* Time Override Toggle */}
-              <div className="border-t pt-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={matchEditForm.useTimeOverride}
-                    onChange={(e) =>
-                      setMatchEditForm((prev) => ({
-                        ...prev,
-                        useTimeOverride: e.target.checked,
-                      }))
-                    }
-                    className="rounded border-slate-600 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  <span className="text-sm font-medium text-slate-300">
-                    Override pengaturan waktu untuk pertandingan ini
-                  </span>
-                </label>
-                <p className="text-xs text-slate-500 mt-1">
-                  Jika tidak diaktifkan, waktu akan mengikuti pengaturan dari Kategori.
-                </p>
-              </div>
-
-              {matchEditForm.useTimeOverride && (
-                <div className="grid grid-cols-2 gap-3 bg-slate-800/60 border border-white/10 rounded-lg p-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">
-                      Durasi Pertandingan (menit)
-                    </label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={matchEditForm.matchDurationMinutes}
-                      onChange={(e) =>
-                        setMatchEditForm((prev) => ({
-                          ...prev,
-                          matchDurationMinutes: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">
-                      Jumlah Babak
-                    </label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={matchEditForm.halfCount}
-                      onChange={(e) =>
-                        setMatchEditForm((prev) => ({
-                          ...prev,
-                          halfCount: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">
-                      Durasi Istirahat (menit)
-                    </label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={matchEditForm.breakDurationMinutes}
-                      onChange={(e) =>
-                        setMatchEditForm((prev) => ({
-                          ...prev,
-                          breakDurationMinutes: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">
-                      Injury Time (menit)
-                    </label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={matchEditForm.injuryTimeMinutes}
-                      onChange={(e) =>
-                        setMatchEditForm((prev) => ({
-                          ...prev,
-                          injuryTimeMinutes: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                  {matchEditForm.halfCount > 0 && (
-                    <p className="col-span-2 text-xs text-slate-500">
-                      = {Math.round(matchEditForm.matchDurationMinutes / matchEditForm.halfCount)} menit per babak
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setMatchEditModalOpen(false)}
-                >
-                  Batal
-                </Button>
-                <Button onClick={handleSaveMatch} disabled={savingMatch}>
-                  {savingMatch ? <Spinner className="w-4 h-4" /> : 'Simpan'}
-                </Button>
-              </div>
-            </div>
-          </Modal>
-        </div>
-      )}
       {/* Publish Confirmation Modal */}
       <Modal
         open={publishModalOpen}
@@ -2381,3 +1795,4 @@ export default function EventManagementPage() {
     </div>
   );
 }
+

@@ -56,8 +56,9 @@ export class UpdateEventCategoryDto {
   @IsOptional()
   stages?: {
     stageOrder: number;
-    stageType: 'GROUP' | 'KNOCKOUT' | 'LEAGUE';
+    stageType: 'GROUP' | 'KNOCKOUT' | 'LEAGUE' | 'DOUBLE_ELIMINATION' | 'SWISS';
     groupCount?: number;
     qualifyPerGroup?: number;
+    settingsJson?: Record<string, unknown>;
   }[];
 }

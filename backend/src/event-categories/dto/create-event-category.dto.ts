@@ -58,9 +58,12 @@ export class CreateEventCategoryDto {
   @IsOptional()
   stages?: {
     stageOrder: number;
-    stageType: 'GROUP' | 'KNOCKOUT' | 'LEAGUE';
+    stageType: 'GROUP' | 'SPECIAL_GROUP' | 'GROUP_NEIGHBOR' | 'KNOCKOUT' | 'LEAGUE' | 'DOUBLE_ELIMINATION' | 'SWISS';
     groupCount?: number;
     qualifyPerGroup?: number;
+    matchPerTeam?: number;
+    penaltyEnabled?: boolean;
+    settingsJson?: Record<string, unknown>;
   }[];
 
   // Legacy fields kept for backwards compat

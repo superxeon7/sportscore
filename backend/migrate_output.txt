@@ -1,0 +1,41 @@
+﻿node.exe : Loaded Prisma 
+config from 
+prisma.config.ts.
+At C:\Program 
+Files\nodejs\npx.ps1:29 
+char:3
++   & $NODE_EXE 
+$NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (L  
+  oaded Prisma c...isma   
+ .config.ts.:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+
+Prisma config detected, 
+skipping environment 
+variable loading.
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "sportscore", schema "public" at "localhost:5432"
+
+Error: P3006
+
+Migration `20260218_upgrad
+e_officials_and_photo` 
+failed to apply cleanly 
+to the shadow database. 
+Error:
+ERROR: type 
+"OfficialRole" does not 
+exist
+   0: schema_core::state::
+DevDiagnostic
+             at schema-eng
+ine\core\src\state.rs:319
+
