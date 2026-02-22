@@ -96,6 +96,15 @@ export class EventCategoriesController {
     return this.eventCategoriesService.getCategoryStandings(id);
   }
 
+  // ── Force recalculate standings (authenticated) ──
+
+  @Post('event-categories/:id/recalculate-standings')
+  async recalculateStandings(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.eventCategoriesService.getCategoryStandings(id);
+  }
+
   // ── Bracket for knockout category (public) ──
 
   @Public()

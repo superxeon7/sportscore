@@ -737,10 +737,16 @@ export class EventCategoriesService {
     );
     const penaltyEnabled = groupStage?.penaltyEnabled ?? false;
 
+    // Only include group-stage matches for standings (exclude KNOCKOUT, DOUBLE_ELIMINATION)
+    const groupStageTypes: string[] = [
+      'GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE', 'SWISS',
+    ];
+
     const matches = await this.prisma.match.findMany({
       where: {
         eventCategoryId: categoryId,
         status: MatchStatus.COMPLETED,
+        stageType: { in: groupStageTypes },
       },
       include: { matchScore: true },
     });
@@ -855,7 +861,7 @@ export class EventCategoriesService {
 
     return {
       penaltyEnabled,
-      data: standings.map((s, i) => ({
+      standings: standings.map((s, i) => ({
         position: i + 1,
         team: teamMap.get(s.teamId) || null,
         ...s,
@@ -1314,7 +1320,7 @@ export class EventCategoriesService {
 
     // Get standings to determine qualified teams
     const standingsResult = await this.getCategoryStandings(categoryId);
-    const standings = standingsResult.data;
+    const standings = standingsResult.standings;
 
     // Map teamId → groupName using match.groupName
     const groupMatches = await this.prisma.match.findMany({
@@ -1659,7 +1665,7 @@ export class EventCategoriesService {
       }
 
       const standingsResult = await this.getCategoryStandings(category.id);
-      const standings = standingsResult.data;
+      const standings = standingsResult.standings;
 
       const groupMatches = await this.prisma.match.findMany({
         where: {

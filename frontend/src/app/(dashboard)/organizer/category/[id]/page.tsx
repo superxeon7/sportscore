@@ -670,7 +670,7 @@ export default function CategoryControlCenter() {
     const [stages, setStages] = useState<CategoryStage[]>([]);
     const [bracket, setBracket] = useState<any>(null);
     const [matches, setMatches] = useState<BracketMatch[]>([]);
-    const [standings, setStandings] = useState<{ penaltyEnabled: boolean; data: StandingEntry[] } | null>(null);
+    const [standings, setStandings] = useState<{ penaltyEnabled: boolean; standings: StandingEntry[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [activeStage, setActiveStage] = useState<number | null>(null);
@@ -903,11 +903,11 @@ export default function CategoryControlCenter() {
     const handleRecalculateStandings = async () => {
         try {
             setRecalculating(true);
-            const standingsRes = await apiGet<any>(`/event-categories/${categoryId}/standings`);
+            const standingsRes = await apiPost<any>(`/event-categories/${categoryId}/recalculate-standings`);
             setStandings(standingsRes);
-            toast.success('Klasemen berhasil diperbarui');
+            toast.success('Klasemen berhasil dihitung ulang');
         } catch (err: any) {
-            toast.error(err.message || 'Gagal memperbarui klasemen');
+            toast.error(err.message || 'Gagal menghitung ulang klasemen');
         } finally {
             setRecalculating(false);
         }
@@ -970,8 +970,8 @@ export default function CategoryControlCenter() {
     const standingsByGroup = useMemo(() => {
         // Build a lookup from API data (may be null/empty — that's fine)
         const standingsMap = new Map<string, StandingEntry>();
-        if (standings?.data) {
-            for (const s of standings.data) {
+        if (standings?.standings) {
+            for (const s of standings.standings) {
                 standingsMap.set(s.teamId, s);
             }
         }
