@@ -143,6 +143,8 @@ export class StandingsService {
 
     for (const match of matches) {
       if (!match.matchScore) continue;
+      // Skip BYE/TBD matches that have no opponent
+      if (!match.homeTeamId || !match.awayTeamId) continue;
 
       const homeId = match.homeTeamId;
       const awayId = match.awayTeamId;
@@ -327,6 +329,24 @@ export class StandingsService {
   }
 
   /**
+   * Convenience: recalculate full standings by looking up tournamentId from matchId.
+   * Always does a full reset-and-recalculate (safer than incremental updateAfterMatch).
+   */
+  async recalculateForMatch(matchId: string) {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      select: { tournamentId: true },
+    });
+
+    if (!match) {
+      this.logger.warn(`recalculateForMatch: match ${matchId} not found, skipping`);
+      return;
+    }
+
+    return this.recalculate(match.tournamentId);
+  }
+
+  /**
    * Update standings after a single match completes.
    * Only recalculates the two teams involved in the match.
    */
@@ -371,7 +391,7 @@ export class StandingsService {
     const pointsForPenaltyWin = 2;
     const pointsForPenaltyLoss = 1;
 
-    const teamIds = [match.homeTeamId, match.awayTeamId];
+    const teamIds = [match.homeTeamId, match.awayTeamId].filter(Boolean) as string[];
 
     // For each team, recalculate their full record from all completed matches
     for (const teamId of teamIds) {

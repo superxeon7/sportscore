@@ -619,35 +619,37 @@ export class MatchesService {
         );
       }
 
-      const effectiveHomeTeamId = dto.homeTeamId ?? match.homeTeamId;
-      const effectiveAwayTeamId = dto.awayTeamId ?? match.awayTeamId;
+      // Determine effective team IDs (null means clearing the slot, which is allowed)
+      const effectiveHomeTeamId = dto.homeTeamId !== undefined ? dto.homeTeamId : match.homeTeamId;
+      const effectiveAwayTeamId = dto.awayTeamId !== undefined ? dto.awayTeamId : match.awayTeamId;
 
       const [homeReg, awayReg] = await Promise.all([
-        this.prisma.eventCategoryTeam.findUnique({
+        effectiveHomeTeamId ? this.prisma.eventCategoryTeam.findUnique({
           where: {
             eventCategoryId_teamId: {
               eventCategoryId: effectiveCategoryId,
               teamId: effectiveHomeTeamId,
             },
           },
-        }),
-        this.prisma.eventCategoryTeam.findUnique({
+        }) : null,
+        effectiveAwayTeamId ? this.prisma.eventCategoryTeam.findUnique({
           where: {
             eventCategoryId_teamId: {
               eventCategoryId: effectiveCategoryId,
               teamId: effectiveAwayTeamId,
             },
           },
-        }),
+        }) : null,
       ]);
 
-      if (!homeReg) {
+      // Only validate registration for non-null team IDs
+      if (effectiveHomeTeamId && !homeReg) {
         throw new BadRequestException(
           `Home team is not registered in category "${category.name}"`,
         );
       }
 
-      if (!awayReg) {
+      if (effectiveAwayTeamId && !awayReg) {
         throw new BadRequestException(
           `Away team is not registered in category "${category.name}"`,
         );
@@ -780,12 +782,31 @@ export class MatchesService {
 
     // Auto-generate POTM after match ends
     if (newStatus === MatchStatus.COMPLETED) {
-      // Set winnerTeamId based on final score
-      if (updated.matchScore) {
-        const hs = updated.matchScore.homeScore;
-        const as_ = updated.matchScore.awayScore;
-        const winnerTeamId = hs > as_ ? updated.homeTeamId
-          : as_ > hs ? updated.awayTeamId
+      // Ensure a matchScore record exists (creates 0-0 if match was never live)
+      await this.prisma.matchScore.upsert({
+        where: { matchId: id },
+        create: {
+          matchId: id,
+          homeScore: 0,
+          awayScore: 0,
+          periodScores: [],
+          extraScores: {},
+          penaltyScores: {},
+        },
+        update: {}, // keep existing scores untouched
+      });
+
+      // Re-fetch the match with score to set winnerTeamId
+      const withScore = await this.prisma.match.findUnique({
+        where: { id },
+        include: { matchScore: true },
+      });
+
+      if (withScore?.matchScore) {
+        const hs = withScore.matchScore.homeScore;
+        const as_ = withScore.matchScore.awayScore;
+        const winnerTeamId = hs > as_ ? withScore.homeTeamId
+          : as_ > hs ? withScore.awayTeamId
           : null;
         if (winnerTeamId !== null) {
           await this.prisma.match.update({
@@ -799,12 +820,134 @@ export class MatchesService {
         this.logger.error(`POTM auto-generate failed for match ${id}: ${err?.message}`),
       );
 
-      // Update standings (non-blocking)
-      this.standingsService.updateAfterMatch(id).catch((err) =>
-        this.logger.error(`Standings update failed for match ${id}: ${err?.message}`),
+      // Full standings recalculate (non-blocking)
+      this.standingsService.recalculateForMatch(id).catch((err) =>
+        this.logger.error(`Standings recalculate failed for match ${id}: ${err?.message}`),
+      );
+
+      // Advance knockout bracket winner to next round (non-blocking)
+      if (match.stageType === 'KNOCKOUT' && withScore?.matchScore) {
+        const hs = withScore.matchScore.homeScore;
+        const as_ = withScore.matchScore.awayScore;
+        const finalWinnerId = hs > as_ ? withScore.homeTeamId
+          : as_ > hs ? withScore.awayTeamId
+          : null;
+        if (finalWinnerId) {
+          this.advanceKnockoutWinner(id, finalWinnerId).catch((err) =>
+            this.logger.error(`Bracket advance failed for match ${id}: ${err?.message}`),
+          );
+        }
+      }
+    }
+
+    return updated;
+  }
+
+  /** Advances the winner of a completed knockout match to the next round's match slot. */
+  private async advanceKnockoutWinner(matchId: string, winnerTeamId: string) {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      select: { winnerToMatchId: true, matchIndex: true },
+    });
+
+    if (!match?.winnerToMatchId) return;
+
+    const isHomeSlot = (match.matchIndex ?? 0) % 2 === 0;
+
+    const nextMatch = await this.prisma.match.update({
+      where: { id: match.winnerToMatchId },
+      data: isHomeSlot ? { homeTeamId: winnerTeamId } : { awayTeamId: winnerTeamId },
+      select: { homeTeamId: true, awayTeamId: true, status: true },
+    });
+
+    // Promote to SCHEDULED once both teams are set
+    if (nextMatch.homeTeamId && nextMatch.awayTeamId && nextMatch.status === 'DRAFT') {
+      await this.prisma.match.update({
+        where: { id: match.winnerToMatchId },
+        data: { status: MatchStatus.SCHEDULED },
+      });
+    }
+  }
+
+  // ─── Manual score editing ────────────────────────────────────────
+
+  /**
+   * Manually set the final score of a match (EO only).
+   * Works on any status; always triggers standings recalculate if COMPLETED.
+   */
+  async setScore(
+    id: string,
+    homeScore: number,
+    awayScore: number,
+    homePenaltyScore: number | null,
+    awayPenaltyScore: number | null,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    await this.ownershipService.assertMatchOwner(id, userId, userRole);
+
+    const match = await this.prisma.match.findUnique({ where: { id } });
+    if (!match) throw new NotFoundException(`Match with id ${id} not found`);
+
+    // Upsert the matchScore record
+    await this.prisma.matchScore.upsert({
+      where: { matchId: id },
+      create: {
+        matchId: id,
+        homeScore,
+        awayScore,
+        periodScores: [],
+        extraScores: {},
+        penaltyScores: {},
+      },
+      update: {
+        homeScore,
+        awayScore,
+      },
+    });
+
+    // Update penalty scores and winner on the match record
+    const isPenaltyUsed =
+      homePenaltyScore !== null && awayPenaltyScore !== null;
+    const winnerTeamId =
+      homeScore > awayScore ? match.homeTeamId
+        : awayScore > homeScore ? match.awayTeamId
+        : null;
+    let penaltyWinnerTeamId: string | null = null;
+    if (isPenaltyUsed) {
+      penaltyWinnerTeamId =
+        (homePenaltyScore ?? 0) > (awayPenaltyScore ?? 0) ? match.homeTeamId
+          : (awayPenaltyScore ?? 0) > (homePenaltyScore ?? 0) ? match.awayTeamId
+          : null;
+    }
+
+    const updated = await this.prisma.match.update({
+      where: { id },
+      data: {
+        winnerTeamId,
+        ...(isPenaltyUsed && {
+          isPenaltyUsed: true,
+          homePenaltyScore: homePenaltyScore!,
+          awayPenaltyScore: awayPenaltyScore!,
+          penaltyWinnerTeamId,
+        }),
+      },
+      include: {
+        homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        matchScore: true,
+        tournament: { select: { id: true, name: true, type: true } },
+      },
+    });
+
+    // Recalculate standings if match is COMPLETED
+    if (match.status === MatchStatus.COMPLETED) {
+      this.standingsService.recalculateForMatch(id).catch((err) =>
+        this.logger.error(`Standings recalculate failed after score edit for match ${id}: ${err?.message}`),
       );
     }
 
+    this.logger.log(`Score set for match ${id}: ${homeScore}-${awayScore}`);
     return updated;
   }
 
@@ -988,6 +1131,8 @@ export class MatchesService {
 
     const isHomeWinner = homeScore > awayScore;
     const winnerTeamId = isHomeWinner ? match.homeTeamId : match.awayTeamId;
+    if (!winnerTeamId) return; // BYE/TBD match — no POTM
+
     const concededByWinner = isHomeWinner ? awayScore : homeScore;
 
     // Get winner lineup (with player position for clean-sheet GK bonus)

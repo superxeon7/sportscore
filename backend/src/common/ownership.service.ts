@@ -127,7 +127,7 @@ export class OwnershipService {
         userId: string,
         userRole: UserRole,
         forTeamId?: string,
-    ): Promise<string> {
+    ): Promise<string | null> {
         const match = await this.prisma.match.findUnique({
             where: { id: matchId },
             select: {
@@ -143,12 +143,12 @@ export class OwnershipService {
         }
 
         if (userRole === UserRole.ADMIN) {
-            return forTeamId ?? match.homeTeamId;
+            return forTeamId ?? match.homeTeamId ?? null;
         }
 
         // Check which team the user manages
-        const managesHome = match.homeTeam.managerId === userId;
-        const managesAway = match.awayTeam.managerId === userId;
+        const managesHome = match.homeTeam?.managerId === userId;
+        const managesAway = match.awayTeam?.managerId === userId;
 
         if (!managesHome && !managesAway) {
             throw new ForbiddenException(
@@ -165,6 +165,6 @@ export class OwnershipService {
             );
         }
 
-        return managedTeamId;
+        return managedTeamId ?? null;
     }
 }

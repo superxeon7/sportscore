@@ -236,6 +236,30 @@ export class EventCategoriesController {
     return this.eventCategoriesService.bulkScheduleMatches(id, updates, userId, userRole);
   }
 
+  // ── Generate knockout bracket from stage (Organizer / Admin) ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Post('stages/:stageId/generate-bracket')
+  async generateKnockoutBracket(
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.generateKnockoutBracket(stageId, userId, userRole);
+  }
+
+  // ── Reset knockout bracket (Organizer / Admin) ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Post('stages/:stageId/reset-bracket')
+  async resetKnockoutBracket(
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.resetKnockoutBracket(stageId, userId, userRole);
+  }
+
   // ── Category Control Center: Swap bracket slot ──
 
   @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
@@ -247,5 +271,26 @@ export class EventCategoriesController {
     @CurrentUser('role') userRole: UserRole,
   ) {
     return this.eventCategoriesService.swapBracketSlots(id, body.matchId, body.slot, body.teamId, userId, userRole);
+  }
+
+  // ── Swap two team slots (drag & drop pairing editor) ──
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch('event-categories/:id/bracket/swap-teams')
+  async swapBracketTeams(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { matchId1: string; slot1: 'home' | 'away'; matchId2: string; slot2: 'home' | 'away' },
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    return this.eventCategoriesService.swapBracketTeams(
+      id,
+      body.matchId1,
+      body.slot1,
+      body.matchId2,
+      body.slot2,
+      userId,
+      userRole,
+    );
   }
 }

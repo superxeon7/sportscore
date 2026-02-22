@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -114,6 +115,33 @@ export class MatchesController {
     @CurrentUser('role') userRole: UserRole,
   ) {
     return this.matchesService.bulkPublish(eventId, userId, userRole);
+  }
+
+  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Patch(':id/score')
+  async setScore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: {
+      homeScore: number;
+      awayScore: number;
+      homePenaltyScore?: number | null;
+      awayPenaltyScore?: number | null;
+    },
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+  ) {
+    if (body.homeScore === undefined || body.awayScore === undefined) {
+      throw new BadRequestException('homeScore and awayScore are required');
+    }
+    return this.matchesService.setScore(
+      id,
+      body.homeScore,
+      body.awayScore,
+      body.homePenaltyScore ?? null,
+      body.awayPenaltyScore ?? null,
+      userId,
+      userRole,
+    );
   }
 
   @Roles(UserRole.ORGANIZER, UserRole.ADMIN)

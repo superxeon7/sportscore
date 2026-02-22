@@ -458,12 +458,12 @@ export default function EventManagementPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Event Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-100">{event.name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-100 break-words">{event.name}</h1>
             <Badge
               className={
                 statusColors[event.status] || 'bg-slate-700/50 text-slate-300'
@@ -473,22 +473,22 @@ export default function EventManagementPage() {
             </Badge>
           </div>
           {event.sport?.name && (
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
               {event.sport.name} &middot; {totalTeams} tim terdaftar
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {(event.status === 'DRAFT' || event.status === 'PUBLISHED') && (
             <Button
               variant={event.status === 'DRAFT' ? 'default' : 'outline'}
               onClick={() => setPublishModalOpen(true)}
               disabled={publishingEvent}
-              className={
+              className={`w-full sm:w-auto ${
                 event.status === 'DRAFT'
                   ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   : ''
-              }
+              }`}
             >
               {publishingEvent ? (
                 <Spinner className="w-4 h-4" />
@@ -502,6 +502,7 @@ export default function EventManagementPage() {
           <Button
             variant="outline"
             onClick={() => setEditing(!editing)}
+            className="w-full sm:w-auto"
           >
             {editing ? 'Batal Ubah' : 'Ubah Acara'}
           </Button>
@@ -510,13 +511,13 @@ export default function EventManagementPage() {
 
       {/* Tabs */}
       <div className="border-b border-white/10">
-        <nav className="flex gap-4 overflow-x-auto no-scrollbar">
+        <nav className="flex gap-1 sm:gap-4 overflow-x-auto no-scrollbar -mb-px">
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+              className={`pb-3 pt-1 px-3 sm:px-1 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
                 ? 'border-emerald-500 text-emerald-400'
-                : 'border-transparent text-slate-500 hover:text-slate-300'
+                : 'border-transparent text-slate-500 hover:text-slate-300 active:text-slate-200'
                 }`}
               onClick={() => setActiveTab(tab.id)}
             >
@@ -528,7 +529,7 @@ export default function EventManagementPage() {
 
       {/* Details Tab */}
       {activeTab === 'details' && (
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6 !rounded-2xl">
           {editing ? (
             <div className="space-y-4">
               <div>
@@ -638,15 +639,15 @@ export default function EventManagementPage() {
                   }
                 />
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleSaveEvent} disabled={savingEvent}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button onClick={handleSaveEvent} disabled={savingEvent} className="w-full sm:w-auto">
                   {savingEvent ? (
                     <Spinner className="w-4 h-4" />
                   ) : (
                     'Simpan Perubahan'
                   )}
                 </Button>
-                <Button variant="outline" onClick={() => setEditing(false)}>
+                <Button variant="outline" onClick={() => setEditing(false)} className="w-full sm:w-auto">
                   Batal
                 </Button>
               </div>
@@ -693,20 +694,21 @@ export default function EventManagementPage() {
       {/* Categories & Teams Tab */}
       {activeTab === 'categories' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-400">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-xs sm:text-sm text-slate-400">
               Kelola kategori dan tim peserta. Daftarkan tim ke kategori yang sesuai.
             </p>
-            <Button onClick={() => setCategoryModalOpen(true)} className="shrink-0 ml-4">
+            <Button onClick={() => setCategoryModalOpen(true)} className="w-full sm:w-auto shrink-0">
               Buat Kategori
             </Button>
           </div>
 
           {categories.length === 0 ? (
-            <Card className="p-8 text-center">
-              <div className="space-y-2">
-                <p className="text-slate-400 font-medium">Belum ada kategori.</p>
-                <p className="text-sm text-slate-500">
+            <Card className="p-6 sm:p-8 text-center !rounded-2xl">
+              <div className="space-y-2 py-4">
+                <div className="text-3xl mb-3 opacity-40">&#9917;</div>
+                <p className="text-slate-300 font-medium">Belum ada kategori.</p>
+                <p className="text-xs sm:text-sm text-slate-500">
                   Buat kategori pertama untuk mulai mendaftarkan tim.
                 </p>
               </div>
@@ -714,7 +716,7 @@ export default function EventManagementPage() {
           ) : (
             <div className="space-y-4">
               {categories.map((cat) => (
-                <Card key={cat.id} className="p-4">
+                <Card key={cat.id} className="p-4 lg:p-6 !rounded-2xl transition-all duration-200 hover:border-slate-600/60 hover:shadow-lg hover:shadow-black/20">
                   {editingCategoryId === cat.id ? (
                     /* ── Inline Edit Form ── */
                     <div className="space-y-4">
@@ -1067,54 +1069,38 @@ export default function EventManagementPage() {
                         )}
                       </div>
 
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleSaveCategory(cat.id)}>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button size="sm" onClick={() => handleSaveCategory(cat.id)} className="w-full sm:w-auto">
                           Simpan
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setEditingCategoryId(null)}>
+                        <Button variant="outline" size="sm" onClick={() => setEditingCategoryId(null)} className="w-full sm:w-auto">
                           Batal
                         </Button>
                       </div>
                     </div>
                   ) : (
                     /* ── Category Card (View Mode) ── */
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-4">
+                      {/* Header: info + actions */}
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        {/* Left: category info */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-slate-100">{cat.name}</h3>
+                          <h3 className="text-base sm:text-lg font-semibold text-slate-100 break-words">
+                            {cat.name}
+                          </h3>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
                             <Badge variant="secondary">{cat.sportType.replace(/_/g, ' ')}</Badge>
-                            <Badge className="bg-blue-900/50 text-blue-300">{GENDERS.find((g) => g.value === cat.gender)?.label || cat.gender}</Badge>
-                            <Badge className="bg-slate-700/50 text-slate-300">{(cat.categoryTeams || []).length} tim</Badge>
-                          </div>
-                          <div className="mt-2 space-y-1">
-                            <p className="text-sm text-slate-400">
-                              Usia: lahir mulai{' '}
-                              <span className="text-slate-300 font-medium">
-                                {new Date(cat.maxDateOfBirth).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                              </span>
-                              {cat.minDateOfBirth && (
-                                <>
-                                  {' '}s.d.{' '}
-                                  <span className="text-slate-300 font-medium">
-                                    {new Date(cat.minDateOfBirth).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                  </span>
-                                </>
-                              )}
-                            </p>
-                            <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                              <span>{cat.halfCount}x{Math.round(cat.matchDurationMinutes / cat.halfCount)} menit</span>
-                              <span>Istirahat: {cat.breakDurationMinutes} menit</span>
-                              {cat.injuryTimeMinutes > 0 && (
-                                <span>Injury Time: {cat.injuryTimeMinutes} menit</span>
-                              )}
-                            </div>
+                            <Badge variant="info">{GENDERS.find((g) => g.value === cat.gender)?.label || cat.gender}</Badge>
+                            <Badge>{(cat.categoryTeams || []).length} Tim</Badge>
                           </div>
                         </div>
-                        <div className="flex gap-2 flex-shrink-0">
+
+                        {/* Right: action buttons */}
+                        <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                           <Button
                             variant="outline"
                             size="sm"
+                            className="w-full sm:w-auto"
                             onClick={() => {
                               setEditingCategoryId(cat.id);
                               const existingStages = cat.stages || [];
@@ -1155,13 +1141,14 @@ export default function EventManagementPage() {
                           <Button
                             variant="destructive"
                             size="sm"
+                            className="w-full sm:w-auto"
                             onClick={() => handleRemoveCategory(cat.id)}
                           >
                             Hapus
                           </Button>
                           <Button
                             size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white"
                             onClick={() => router.push(`/organizer/category/${cat.id}`)}
                           >
                             Kelola Kategori
@@ -1169,13 +1156,43 @@ export default function EventManagementPage() {
                         </div>
                       </div>
 
+                      {/* Detail info grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                        <div className="bg-white/[0.03] rounded-xl p-3">
+                          <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wide">Aturan Usia</div>
+                          <div className="text-sm font-medium text-slate-200 mt-0.5">
+                            {new Date(cat.maxDateOfBirth).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {cat.minDateOfBirth && (
+                              <> &ndash; {new Date(cat.minDateOfBirth).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</>
+                            )}
+                          </div>
+                        </div>
+                        <div className="bg-white/[0.03] rounded-xl p-3">
+                          <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wide">Durasi</div>
+                          <div className="text-sm font-medium text-slate-200 mt-0.5">
+                            {cat.halfCount}x{Math.round(cat.matchDurationMinutes / cat.halfCount)} menit
+                          </div>
+                        </div>
+                        <div className="bg-white/[0.03] rounded-xl p-3">
+                          <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wide">Istirahat</div>
+                          <div className="text-sm font-medium text-slate-200 mt-0.5">{cat.breakDurationMinutes} menit</div>
+                        </div>
+                        {cat.injuryTimeMinutes > 0 && (
+                          <div className="bg-white/[0.03] rounded-xl p-3">
+                            <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wide">Injury Time</div>
+                            <div className="text-sm font-medium text-slate-200 mt-0.5">{cat.injuryTimeMinutes} menit</div>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Team list for this category */}
-                      <div className="border-t border-white/10 pt-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-medium text-slate-400">Tim Terdaftar</p>
+                      <div className="border-t border-white/5 pt-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs sm:text-sm font-medium text-slate-400">Tim Terdaftar</p>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="shrink-0"
                             onClick={async () => {
                               setTeamModalCategoryId(cat.id);
                               setSelectedTeamId('');
@@ -1210,24 +1227,24 @@ export default function EventManagementPage() {
                           </Button>
                         </div>
                         {(cat.categoryTeams || []).length === 0 ? (
-                          <p className="text-xs text-slate-500 py-2">Belum ada tim di kategori ini.</p>
+                          <p className="text-xs text-slate-500 py-3">Belum ada tim di kategori ini.</p>
                         ) : (
                           <div className="flex flex-wrap gap-2">
                             {(cat.categoryTeams || []).map((ct) => (
                               <div
                                 key={ct.id}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-white/10"
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5 transition-colors hover:bg-white/[0.06] active:bg-white/[0.08]"
                               >
-                                <span className="text-sm text-slate-200">{ct.team?.name || ct.teamId}</span>
+                                <span className="text-xs sm:text-sm text-slate-200 truncate max-w-[150px] sm:max-w-none">{ct.team?.name || ct.teamId}</span>
                                 {ct.categoryGroup && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-900/50 text-indigo-300 border border-indigo-700/40">
+                                  <Badge size="sm" variant="info">
                                     {ct.categoryGroup.name}
-                                  </span>
+                                  </Badge>
                                 )}
-                                {ct.team?.city && <span className="text-xs text-slate-500">{ct.team.city}</span>}
+                                {ct.team?.city && <span className="text-[10px] sm:text-xs text-slate-500 hidden sm:inline">{ct.team.city}</span>}
                                 <button
                                   onClick={() => handleRemoveTeamFromCategory(cat.id, ct.teamId)}
-                                  className="text-red-400 hover:text-red-300 text-xs ml-1"
+                                  className="text-red-400 hover:text-red-300 active:text-red-200 text-sm ml-1 p-1 -m-1 rounded-md hover:bg-red-500/10 transition-colors"
                                   title="Hapus tim"
                                 >
                                   &times;
@@ -1636,17 +1653,19 @@ export default function EventManagementPage() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setCategoryModalOpen(false)}
+                  className="w-full sm:w-auto"
                 >
                   Batal
                 </Button>
                 <Button
                   type="submit"
                   disabled={creatingCategory || !categoryForm.name.trim() || !categoryForm.maxDateOfBirth}
+                  className="w-full sm:w-auto"
                 >
                   {creatingCategory ? <Spinner className="w-4 h-4" /> : 'Buat Kategori'}
                 </Button>
@@ -1720,10 +1739,11 @@ export default function EventManagementPage() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
                 <Button
                   variant="outline"
                   onClick={() => { setTeamModalOpen(false); setTeamModalCategoryId(null); setSelectedGroupId(''); }}
+                  className="w-full sm:w-auto"
                 >
                   Batal
                 </Button>
@@ -1735,6 +1755,7 @@ export default function EventManagementPage() {
                     const hasGroupStage = (cat?.stages || []).some((s) => s.stageType === 'GROUP');
                     return hasGroupStage && !selectedGroupId;
                   })()}
+                  className="w-full sm:w-auto"
                 >
                   {registeringTeam ? (
                     <Spinner className="w-4 h-4" />
@@ -1764,22 +1785,23 @@ export default function EventManagementPage() {
               ? 'Publikasikan acara ini agar terlihat oleh publik?'
               : 'Kembalikan acara ini ke status draf? Acara tidak akan terlihat oleh publik.'}
           </p>
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-2">
             <Button
               variant="outline"
               onClick={() => setPublishModalOpen(false)}
               disabled={publishingEvent}
+              className="w-full sm:w-auto"
             >
               Batal
             </Button>
             <Button
               onClick={handleToggleEventPublish}
               disabled={publishingEvent}
-              className={
+              className={`w-full sm:w-auto ${
                 event?.status === 'DRAFT'
                   ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   : ''
-              }
+              }`}
             >
               {publishingEvent ? (
                 <Spinner className="w-4 h-4" />

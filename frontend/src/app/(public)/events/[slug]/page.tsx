@@ -630,11 +630,11 @@ function DEBracketLoader({ categoryId }: { categoryId: string }) {
 
   return (
     <DoubleEliminationBracket
-      upper={bracketData.data.upper}
-      lower={bracketData.data.lower}
-      grandFinal={bracketData.data.grandFinal}
-      resetFinal={bracketData.data.resetFinal}
-      seeding={bracketData.data.seeding}
+      upper={bracketData.upper}
+      lower={bracketData.lower}
+      grandFinal={bracketData.grandFinal}
+      resetFinal={bracketData.resetFinal}
+      seeding={bracketData.seeding}
     />
   );
 }

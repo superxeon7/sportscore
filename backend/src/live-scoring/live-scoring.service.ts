@@ -136,8 +136,8 @@ export class LiveScoringService {
       currentPeriod: match.currentPeriod,
       score,
       events,
-      homeTeamId: match.homeTeamId,
-      awayTeamId: match.awayTeamId,
+      homeTeamId: match.homeTeamId ?? '',
+      awayTeamId: match.awayTeamId ?? '',
       startedAt: match.startedAt,
       timerState: null,
       sportSlug: sport.slug,
@@ -373,8 +373,8 @@ export class LiveScoringService {
       this.logger.error(`Swiss round completion check failed for match ${matchId}: ${err?.message}`),
     );
 
-    // Auto-update standings (non-blocking) – covers group & special group stages
-    this.standingsService.updateAfterMatch(matchId).catch((err) =>
+    // Auto-update standings (non-blocking) – full recalculate for accuracy
+    this.standingsService.recalculateForMatch(matchId).catch((err) =>
       this.logger.error(`Standings update failed for match ${matchId}: ${err?.message}`),
     );
 

@@ -58,6 +58,10 @@ export class BracketAdvancementService {
                     this.logger.warn(`Match ${matchId} ended in a draw even after penalties — skipping`);
                     return;
                 }
+                if (!match.homeTeamId || !match.awayTeamId) {
+                    this.logger.warn(`Match ${matchId} has null team — skipping advancement`);
+                    return;
+                }
                 // Penalty winner
                 const winnerId = penaltyScores.home > penaltyScores.away
                     ? match.homeTeamId
@@ -71,6 +75,10 @@ export class BracketAdvancementService {
                 return;
             }
         } else {
+            if (!match.homeTeamId || !match.awayTeamId) {
+                this.logger.warn(`Match ${matchId} has null team — skipping advancement`);
+                return;
+            }
             const winnerId = homeScore > awayScore ? match.homeTeamId : match.awayTeamId;
             const loserId = winnerId === match.homeTeamId ? match.awayTeamId : match.homeTeamId;
             await this.processAdvancement(match, winnerId, loserId);
@@ -157,14 +165,28 @@ export class BracketAdvancementService {
                 } else if (targetMatch.sourceMatchBId === match.id) {
                     updateData.awayTeamId = winnerId;
                 } else {
-                    // Fallback: fill whichever slot is still a placeholder
-                    updateData.homeTeamId = winnerId;
+                    // Fallback for simple single-elimination brackets:
+                    // even matchIndex → home slot, odd matchIndex → away slot
+                    const isHomeSlot = (match.matchIndex ?? 0) % 2 === 0;
+                    if (isHomeSlot) {
+                        updateData.homeTeamId = winnerId;
+                    } else {
+                        updateData.awayTeamId = winnerId;
+                    }
                 }
 
                 updates.push(
                     this.prisma.match.update({
                         where: { id: match.winnerToMatchId },
                         data: updateData,
+                    }).then(async (updated: any) => {
+                        // Promote to SCHEDULED once both teams are set
+                        if (updated.homeTeamId && updated.awayTeamId && updated.status === 'DRAFT') {
+                            await this.prisma.match.update({
+                                where: { id: match.winnerToMatchId },
+                                data: { status: MatchStatus.SCHEDULED },
+                            });
+                        }
                     }),
                 );
             }

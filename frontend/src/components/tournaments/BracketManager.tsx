@@ -37,13 +37,12 @@ interface SeedEntry {
 
 interface BracketData {
     type: string;
-    data: {
-        upper: Record<number, BracketMatch[]>;
-        lower: Record<number, BracketMatch[]>;
-        grandFinal: BracketMatch | null;
-        resetFinal: BracketMatch | null;
-        seeding: SeedEntry[];
-    };
+    upper: Record<number, BracketMatch[]>;
+    lower: Record<number, BracketMatch[]>;
+    grandFinal: BracketMatch | null;
+    resetFinal: BracketMatch | null;
+    seeding: SeedEntry[];
+    rounds?: Record<number, BracketMatch[]>;
 }
 
 interface BracketManagerProps {
@@ -88,8 +87,8 @@ export default function BracketManager({
             setBracketData(res);
 
             // Initialize seeding from bracket data or category teams
-            if (res?.data?.seeding?.length > 0) {
-                setSeedingOrder(res.data.seeding.map((s) => s.team.id));
+            if (res?.seeding?.length > 0) {
+                setSeedingOrder(res.seeding.map((s: SeedEntry) => s.team.id));
             } else {
                 setSeedingOrder(categoryTeams.map((ct) => ct.teamId));
             }
@@ -173,8 +172,8 @@ export default function BracketManager({
 
     const teamMap = new Map(categoryTeams.map((ct) => [ct.teamId, ct.team]));
     const hasMatches = bracketData?.type === 'DOUBLE_ELIMINATION' &&
-        (Object.keys(bracketData.data.upper || {}).length > 0 ||
-            bracketData.data.grandFinal != null);
+        (Object.keys(bracketData.upper || {}).length > 0 ||
+            bracketData.grandFinal != null);
 
     if (!isDoubleElim) {
         return (
@@ -310,7 +309,7 @@ export default function BracketManager({
                         </h3>
                         <div className="overflow-x-auto">
                             <div className="flex gap-8 min-w-max">
-                                {Object.entries(bracketData.data.upper)
+                                {Object.entries(bracketData.upper)
                                     .sort(([a], [b]) => Number(a) - Number(b))
                                     .map(([round, matchList]) => (
                                         <div key={round} className="flex-shrink-0 w-56">
@@ -329,14 +328,14 @@ export default function BracketManager({
                     </Card>
 
                     {/* Lower Bracket */}
-                    {Object.keys(bracketData.data.lower || {}).length > 0 && (
+                    {Object.keys(bracketData.lower || {}).length > 0 && (
                         <Card className="p-6">
                             <h3 className="text-lg font-semibold text-orange-400 mb-4">
                                 ▼ Lower Bracket
                             </h3>
                             <div className="overflow-x-auto">
                                 <div className="flex gap-8 min-w-max">
-                                    {Object.entries(bracketData.data.lower)
+                                    {Object.entries(bracketData.lower)
                                         .sort(([a], [b]) => Number(a) - Number(b))
                                         .map(([round, matchList]) => (
                                             <div key={round} className="flex-shrink-0 w-56">
@@ -361,20 +360,20 @@ export default function BracketManager({
                             🏆 Grand Final
                         </h3>
                         <div className="flex gap-6">
-                            {bracketData.data.grandFinal && (
+                            {bracketData.grandFinal && (
                                 <div className="w-56">
                                     <h4 className="text-xs font-medium text-slate-500 mb-2 text-center uppercase">
                                         Grand Final
                                     </h4>
-                                    <MatchCard match={bracketData.data.grandFinal} isGrandFinal />
+                                    <MatchCard match={bracketData.grandFinal} isGrandFinal />
                                 </div>
                             )}
-                            {bracketData.data.resetFinal && (
+                            {bracketData.resetFinal && (
                                 <div className="w-56">
                                     <h4 className="text-xs font-medium text-slate-500 mb-2 text-center uppercase">
                                         Reset Final
                                     </h4>
-                                    <MatchCard match={bracketData.data.resetFinal} isResetFinal />
+                                    <MatchCard match={bracketData.resetFinal} isResetFinal />
                                 </div>
                             )}
                         </div>

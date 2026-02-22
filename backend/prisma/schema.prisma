@@ -478,9 +478,11 @@ model Match {
   isGrandFinal     Boolean       @default(false) @map("is_grand_final")
   isResetFinal     Boolean       @default(false) @map("is_reset_final")
 
+  isBye                 Boolean  @default(false) @map("is_bye")
+
   tournamentId          String  @map("tournament_id")
-  homeTeamId            String  @map("home_team_id")
-  awayTeamId            String  @map("away_team_id")
+  homeTeamId            String? @map("home_team_id")
+  awayTeamId            String? @map("away_team_id")
   eventCategoryId       String? @map("event_category_id")
   playerOfTheMatchId    String? @map("player_of_the_match_id")
   potmLocked            Boolean @default(false) @map("potm_locked")
@@ -489,8 +491,8 @@ model Match {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tournament       Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  homeTeam         Team           @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam         Team           @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeTeam         Team?          @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam         Team?          @relation("AwayTeam", fields: [awayTeamId], references: [id])
   winnerTeam       Team?          @relation("MatchWinner", fields: [winnerTeamId], references: [id])
   penaltyWinnerTeam Team?         @relation("MatchPenaltyWinner", fields: [penaltyWinnerTeamId], references: [id])
   eventCategory    EventCategory? @relation(fields: [eventCategoryId], references: [id])

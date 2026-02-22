@@ -360,8 +360,8 @@ export class PlayersService {
     type MatchHistoryItem = {
       matchId: string;
       scheduledAt: Date;
-      homeTeam: { id: string; name: string; shortName: string | null; logoUrl: string | null };
-      awayTeam: { id: string; name: string; shortName: string | null; logoUrl: string | null };
+      homeTeam: { id: string; name: string; shortName: string | null; logoUrl: string | null } | null;
+      awayTeam: { id: string; name: string; shortName: string | null; logoUrl: string | null } | null;
       homeScore: number | null;
       awayScore: number | null;
       categoryId: string;
@@ -386,8 +386,8 @@ export class PlayersService {
         matchHistoryMap.set(matchId, {
           matchId,
           scheduledAt: match.scheduledAt,
-          homeTeam: match.homeTeam,
-          awayTeam: match.awayTeam,
+          homeTeam: match.homeTeam ?? null,
+          awayTeam: match.awayTeam ?? null,
           homeScore: match.matchScore?.homeScore ?? null,
           awayScore: match.matchScore?.awayScore ?? null,
           categoryId: match.eventCategory?.id ?? 'general',

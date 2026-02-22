@@ -323,8 +323,8 @@ export class SwissSystemService {
         for (const round of swissRounds) {
             const teamsInRound = new Set<string>();
             for (const m of round.matches) {
-                teamsInRound.add(m.homeTeamId);
-                teamsInRound.add(m.awayTeamId);
+                if (m.homeTeamId) teamsInRound.add(m.homeTeamId);
+                if (m.awayTeamId) teamsInRound.add(m.awayTeamId);
             }
             for (const tid of teamIds) {
                 if (!teamsInRound.has(tid)) {
@@ -352,6 +352,7 @@ export class SwissSystemService {
 
         for (const match of matches) {
             if (!match.matchScore) continue;
+            if (!match.homeTeamId || !match.awayTeamId) continue;
 
             const home = map.get(match.homeTeamId);
             const away = map.get(match.awayTeamId);
@@ -673,7 +674,9 @@ export class SwissSystemService {
 
         const pairs = new Set<string>();
         for (const m of matches) {
-            pairs.add(this.makePairKey(m.homeTeamId, m.awayTeamId));
+            if (m.homeTeamId && m.awayTeamId) {
+                pairs.add(this.makePairKey(m.homeTeamId, m.awayTeamId));
+            }
         }
         return pairs;
     }
