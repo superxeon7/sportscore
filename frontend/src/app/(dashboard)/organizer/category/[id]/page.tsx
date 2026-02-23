@@ -84,6 +84,15 @@ interface BracketMatch {
     awayScore: number;
 }
 
+interface FormEntry {
+    matchId: string;
+    opponentName: string;
+    teamScore: number;
+    opponentScore: number;
+    result: 'W' | 'L' | 'D' | 'WP' | 'LP';
+    date: string;
+}
+
 interface StandingEntry {
     position: number;
     teamId: string;
@@ -98,6 +107,7 @@ interface StandingEntry {
     points: number;
     penaltyWins: number;
     penaltyLosses: number;
+    form?: FormEntry[];
 }
 
 /* ────────────────────────────────────────────
@@ -899,6 +909,27 @@ export default function CategoryControlCenter() {
     };
 
     const [recalculating, setRecalculating] = useState(false);
+    const [matchDetailId, setMatchDetailId] = useState<string | null>(null);
+    const [matchDetail, setMatchDetail] = useState<any>(null);
+    const [matchDetailLoading, setMatchDetailLoading] = useState(false);
+
+    const handleOpenMatchDetail = async (matchId: string) => {
+        setMatchDetailId(matchId);
+        setMatchDetailLoading(true);
+        try {
+            const res = await apiGet<any>(`/matches/public/${matchId}`);
+            setMatchDetail(res);
+        } catch {
+            setMatchDetail(null);
+        } finally {
+            setMatchDetailLoading(false);
+        }
+    };
+
+    const handleCloseMatchDetail = () => {
+        setMatchDetailId(null);
+        setMatchDetail(null);
+    };
 
     const handleRecalculateStandings = async () => {
         try {
@@ -983,6 +1014,7 @@ export default function CategoryControlCenter() {
             played: 0, win: 0, draw: 0, lose: 0,
             goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0,
             penaltyWins: 0, penaltyLosses: 0,
+            form: [],
         });
 
         const sortEntries = (entries: StandingEntry[]) =>
@@ -1047,7 +1079,8 @@ export default function CategoryControlCenter() {
                             <div className="bg-white/5 px-4 py-2.5 border-b border-white/5">
                                 <h3 className="text-sm font-bold text-emerald-400">{sg.groupName}</h3>
                             </div>
-                            <table className="w-full">
+                            <div className="overflow-x-auto">
+                            <table className="w-full min-w-[640px]">
                                 <thead>
                                     <tr className="bg-white/[0.02]">
                                         <th className="text-left text-[10px] font-semibold text-slate-500 px-4 py-2 w-8">#</th>
@@ -1066,6 +1099,7 @@ export default function CategoryControlCenter() {
                                             </>
                                         )}
                                         <th className="text-center text-[10px] font-bold text-emerald-400 px-2 py-2 w-10">PTS</th>
+                                        <th className="text-center text-[10px] font-semibold text-slate-500 px-2 py-2">Form</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
@@ -1102,10 +1136,37 @@ export default function CategoryControlCenter() {
                                                 </>
                                             )}
                                             <td className="text-center text-xs font-bold text-emerald-400 px-2 py-2.5">{entry.points}</td>
+                                            <td className="px-2 py-2.5">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    {(entry.form || []).map((f, fi) => {
+                                                        const colors: Record<string, string> = {
+                                                            W: 'bg-emerald-500 hover:bg-emerald-400',
+                                                            L: 'bg-red-500 hover:bg-red-400',
+                                                            D: 'bg-slate-500 hover:bg-slate-400',
+                                                            WP: 'bg-yellow-500 hover:bg-yellow-400',
+                                                            LP: 'bg-orange-500 hover:bg-orange-400',
+                                                        };
+                                                        return (
+                                                            <button
+                                                                key={fi}
+                                                                onClick={() => handleOpenMatchDetail(f.matchId)}
+                                                                className={`w-5 h-5 rounded text-[9px] font-bold text-white flex items-center justify-center cursor-pointer transition-colors ${colors[f.result] || 'bg-slate-600'}`}
+                                                                title={`${f.result} vs ${f.opponentName} (${f.teamScore}-${f.opponentScore})`}
+                                                            >
+                                                                {f.result.length > 1 ? f.result[0] : f.result}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    {(!entry.form || entry.form.length === 0) && (
+                                                        <span className="text-[10px] text-slate-600">-</span>
+                                                    )}
+                                                </div>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -1113,6 +1174,168 @@ export default function CategoryControlCenter() {
                 <div className="text-center py-16 text-slate-500">
                     <p className="text-4xl mb-3">👥</p>
                     <p>Tambahkan tim ke kategori untuk melihat klasemen.</p>
+                </div>
+            )}
+
+            {/* ── Match Detail Modal ── */}
+            {matchDetailId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCloseMatchDetail} />
+                    <div className="relative z-10 w-full max-w-2xl mx-4 rounded-xl bg-slate-900 border border-slate-700/60 shadow-2xl shadow-black/40 max-h-[90vh] flex flex-col">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3.5 flex-shrink-0">
+                            <h2 className="text-lg font-semibold text-slate-100">Detail Pertandingan</h2>
+                            <button
+                                onClick={handleCloseMatchDetail}
+                                className="rounded p-1 text-slate-500 hover:bg-white/10 hover:text-slate-300 transition-colors"
+                            >
+                                <span className="text-xl leading-none">&times;</span>
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="px-5 py-4 overflow-y-auto flex-1">
+                            {matchDetailLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            ) : !matchDetail ? (
+                                <div className="text-center py-12 text-slate-500">Data pertandingan tidak ditemukan</div>
+                            ) : (
+                                <div className="space-y-6">
+                                    {/* Score Header */}
+                                    <div className="text-center space-y-3">
+                                        <div className="flex items-center justify-center gap-4">
+                                            {/* Home */}
+                                            <div className="flex-1 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <span className="text-sm font-semibold text-white truncate">
+                                                        {matchDetail.homeTeam?.shortName || matchDetail.homeTeam?.name || 'TBD'}
+                                                    </span>
+                                                    {matchDetail.homeTeam?.logoUrl ? (
+                                                        <img src={matchDetail.homeTeam.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                                                    ) : (
+                                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-xs text-slate-400">
+                                                            {(matchDetail.homeTeam?.name || 'H')[0]}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {/* Score */}
+                                            <div className="px-4">
+                                                <span className="text-3xl font-bold text-white">
+                                                    {matchDetail.matchScore
+                                                        ? `${matchDetail.matchScore.homeScore} - ${matchDetail.matchScore.awayScore}`
+                                                        : 'vs'}
+                                                </span>
+                                                {matchDetail.isPenaltyUsed && (
+                                                    <div className="text-xs text-yellow-400 mt-1">
+                                                        Pen: {matchDetail.homePenaltyScore} - {matchDetail.awayPenaltyScore}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* Away */}
+                                            <div className="flex-1 text-left">
+                                                <div className="flex items-center gap-2">
+                                                    {matchDetail.awayTeam?.logoUrl ? (
+                                                        <img src={matchDetail.awayTeam.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                                                    ) : (
+                                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-xs text-slate-400">
+                                                            {(matchDetail.awayTeam?.name || 'A')[0]}
+                                                        </div>
+                                                    )}
+                                                    <span className="text-sm font-semibold text-white truncate">
+                                                        {matchDetail.awayTeam?.shortName || matchDetail.awayTeam?.name || 'TBD'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Meta info */}
+                                        <div className="flex items-center justify-center gap-3 text-xs text-slate-500">
+                                            {matchDetail.scheduledAt && (
+                                                <span>{new Date(matchDetail.scheduledAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                            )}
+                                            {matchDetail.venue && <span>• {matchDetail.venue}</span>}
+                                            {matchDetail.groupName && <span>• {matchDetail.groupName}</span>}
+                                        </div>
+                                    </div>
+
+                                    {/* Match Events / Goals */}
+                                    {matchDetail.matchEvents && matchDetail.matchEvents.length > 0 && (
+                                        <div className="rounded-lg border border-white/10 overflow-hidden">
+                                            <div className="bg-white/5 px-4 py-2 border-b border-white/5">
+                                                <h3 className="text-xs font-bold text-slate-400 uppercase">Kejadian Pertandingan</h3>
+                                            </div>
+                                            <div className="divide-y divide-white/5">
+                                                {matchDetail.matchEvents.map((ev: any, i: number) => {
+                                                    const isHome = ev.teamId === matchDetail.homeTeamId;
+                                                    const eventIcons: Record<string, string> = {
+                                                        GOAL: '\u26BD', OWN_GOAL: '\u26BD\uFE0F\u200D\u2B50', PENALTY_GOAL: '\u26BD(P)',
+                                                        YELLOW_CARD: '\uD83D\uDFE8', RED_CARD: '\uD83D\uDFE5', SECOND_YELLOW: '\uD83D\uDFE8\uD83D\uDFE5',
+                                                        SUBSTITUTION: '\uD83D\uDD04',
+                                                    };
+                                                    return (
+                                                        <div key={i} className={`flex items-center gap-2 px-4 py-2 text-xs ${isHome ? '' : 'flex-row-reverse text-right'}`}>
+                                                            <span className="text-slate-500 w-8 text-center flex-shrink-0">{ev.minute}&apos;</span>
+                                                            <span className="flex-shrink-0">{eventIcons[ev.eventType] || '\u2022'}</span>
+                                                            <span className="text-slate-200 truncate">
+                                                                {ev.player?.fullName || ev.description || ev.eventType}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Lineups */}
+                                    {matchDetail.matchLineups && matchDetail.matchLineups.length > 0 && (
+                                        <div className="rounded-lg border border-white/10 overflow-hidden">
+                                            <div className="bg-white/5 px-4 py-2 border-b border-white/5">
+                                                <h3 className="text-xs font-bold text-slate-400 uppercase">Susunan Pemain</h3>
+                                            </div>
+                                            <div className="grid grid-cols-2 divide-x divide-white/5">
+                                                {matchDetail.matchLineups.map((lineup: any) => (
+                                                    <div key={lineup.id} className="p-3">
+                                                        <h4 className="text-xs font-semibold text-slate-300 mb-2">
+                                                            {lineup.team?.shortName || lineup.team?.name}
+                                                        </h4>
+                                                        <div className="space-y-1">
+                                                            {lineup.players?.map((lp: any) => (
+                                                                <div key={lp.id} className="flex items-center gap-1.5 text-[11px]">
+                                                                    <span className="text-slate-500 w-5 text-right">{lp.jerseyNumber}</span>
+                                                                    <span className={lp.isStarter ? 'text-slate-200' : 'text-slate-500'}>
+                                                                        {lp.player?.fullName || 'Unknown'}
+                                                                    </span>
+                                                                    {!lp.isStarter && <span className="text-[9px] text-slate-600">(sub)</span>}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* POTM */}
+                                    {matchDetail.playerOfTheMatch && (
+                                        <div className="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3 flex items-center gap-3">
+                                            <span className="text-yellow-400 text-lg">&#9733;</span>
+                                            <div>
+                                                <div className="text-[10px] text-slate-500 uppercase font-semibold">Pemain Terbaik</div>
+                                                <div className="text-sm text-white font-medium">
+                                                    {matchDetail.playerOfTheMatch.fullName}
+                                                    {matchDetail.playerOfTheMatch.team && (
+                                                        <span className="text-slate-500 ml-1">({matchDetail.playerOfTheMatch.team.shortName || matchDetail.playerOfTheMatch.team.name})</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

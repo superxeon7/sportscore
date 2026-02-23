@@ -859,11 +859,79 @@ export class EventCategoriesService {
     });
     const teamMap = new Map(teams.map((t) => [t.id, t]));
 
+    // Build last 5 match form per team
+    const formMap = new Map<string, { matchId: string; opponentName: string; teamScore: number; opponentScore: number; result: string; date: string }[]>();
+
+    // Sort matches by scheduledAt desc to get most recent first
+    const sortedMatches = [...matches].sort((a, b) => {
+      const da = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
+      const db = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
+      return db - da;
+    });
+
+    for (const match of sortedMatches) {
+      if (!match.matchScore) continue;
+      if (!match.homeTeamId || !match.awayTeamId) continue;
+
+      const hs = match.matchScore.homeScore;
+      const as_ = match.matchScore.awayScore;
+      const matchDate = match.scheduledAt ? new Date(match.scheduledAt).toISOString() : '';
+
+      // Determine result for each team
+      const getResult = (isHome: boolean): string => {
+        const tScore = isHome ? hs : as_;
+        const oScore = isHome ? as_ : hs;
+        if (tScore > oScore) return 'W';
+        if (tScore < oScore) return 'L';
+        // Draw — check penalty
+        if (penaltyEnabled && match.isPenaltyUsed) {
+          const hPen = match.homePenaltyScore ?? 0;
+          const aPen = match.awayPenaltyScore ?? 0;
+          const teamPen = isHome ? hPen : aPen;
+          const oppPen = isHome ? aPen : hPen;
+          if (teamPen > oppPen) return 'WP';
+          if (teamPen < oppPen) return 'LP';
+        }
+        return 'D';
+      };
+
+      // Home team form
+      const homeForm = formMap.get(match.homeTeamId) || [];
+      if (homeForm.length < 5) {
+        const opponentTeam = teamMap.get(match.awayTeamId);
+        homeForm.push({
+          matchId: match.id,
+          opponentName: opponentTeam?.shortName || opponentTeam?.name || 'Unknown',
+          teamScore: hs,
+          opponentScore: as_,
+          result: getResult(true),
+          date: matchDate,
+        });
+        formMap.set(match.homeTeamId, homeForm);
+      }
+
+      // Away team form
+      const awayForm = formMap.get(match.awayTeamId) || [];
+      if (awayForm.length < 5) {
+        const opponentTeam = teamMap.get(match.homeTeamId);
+        awayForm.push({
+          matchId: match.id,
+          opponentName: opponentTeam?.shortName || opponentTeam?.name || 'Unknown',
+          teamScore: as_,
+          opponentScore: hs,
+          result: getResult(false),
+          date: matchDate,
+        });
+        formMap.set(match.awayTeamId, awayForm);
+      }
+    }
+
     return {
       penaltyEnabled,
       standings: standings.map((s, i) => ({
         position: i + 1,
         team: teamMap.get(s.teamId) || null,
+        form: (formMap.get(s.teamId) || []).reverse(), // oldest first → newest last
         ...s,
       })),
     };

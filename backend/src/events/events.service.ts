@@ -856,6 +856,9 @@ export class EventsService {
     }
 
     // Per-category processing
+    const GROUP_STAGE_TYPES = ['GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE'];
+    const KNOCKOUT_STAGE_TYPES = ['KNOCKOUT', 'DOUBLE_ELIMINATION'];
+
     const categories = event.categories.map((cat) => {
       const catMatchIds = new Set(
         allMatches.filter((m) => m.eventCategoryId === cat.id).map((m) => m.id),
@@ -863,10 +866,8 @@ export class EventsService {
       const catMatches = allMatches.filter((m) => catMatchIds.has(m.id));
       const catGoalEvents = goalEvents.filter((ge) => catMatchIds.has(ge.matchId));
 
-      const groupMatches = catMatches.filter((m) => m.stageType === 'GROUP');
-      const knockoutMatches = catMatches.filter((m) => m.stageType === 'KNOCKOUT' || m.stageType === 'DOUBLE_ELIMINATION');
-
-      // Swiss matches are handled in swissDataMap, but if we want to include them in allMatches list:
+      const groupMatches = catMatches.filter((m) => GROUP_STAGE_TYPES.includes(m.stageType ?? ''));
+      const knockoutMatches = catMatches.filter((m) => KNOCKOUT_STAGE_TYPES.includes(m.stageType ?? ''));
       const swissMatches = catMatches.filter((m) => m.stageType === 'SWISS');
 
       const sortedGroupMatches = [...groupMatches].sort((a, b) => {
@@ -890,9 +891,16 @@ export class EventsService {
         return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
       });
 
+      // Check if penalty mode is enabled for the group stage
+      const groupStage = cat.stages?.find(
+        (s) => GROUP_STAGE_TYPES.includes(s.stageType),
+      );
+      const penaltyEnabled = groupStage?.penaltyEnabled ?? false;
+
       // Build group standings (default zeros from registrations)
       const groupStandings: Record<string, any[]> = {};
 
+      // Initialize standings rows for all teams in their groups
       if (cat.categoryGroups.length > 0) {
         cat.categoryGroups.forEach((cg) => {
           groupStandings[cg.name] = [];
@@ -917,58 +925,109 @@ export class EventsService {
             goalsAgainst: 0,
             goalDifference: 0,
             points: 0,
+            penaltyWins: 0,
+            penaltyLosses: 0,
           });
         });
-
-        // Overlay completed match results
-        groupMatches
-          .filter(
-            (m) =>
-              m.status === MatchStatus.COMPLETED &&
-              m.matchScore &&
-              m.groupName,
-          )
-          .forEach((m) => {
-            const groupName = m.groupName as string;
-            const rows = groupStandings[groupName];
-            if (!rows) return;
-            const hs = m.matchScore!.homeScore;
-            const as_ = m.matchScore!.awayScore;
-            const homeRow = rows.find((r) => r.teamId === m.homeTeamId);
-            const awayRow = rows.find((r) => r.teamId === m.awayTeamId);
-            if (homeRow) {
-              homeRow.played++;
-              homeRow.goalsFor += hs;
-              homeRow.goalsAgainst += as_;
-              homeRow.goalDifference = homeRow.goalsFor - homeRow.goalsAgainst;
-              if (hs > as_) { homeRow.won++; homeRow.points += 3; }
-              else if (hs === as_) { homeRow.drawn++; homeRow.points += 1; }
-              else { homeRow.lost++; }
-            }
-            if (awayRow) {
-              awayRow.played++;
-              awayRow.goalsFor += as_;
-              awayRow.goalsAgainst += hs;
-              awayRow.goalDifference = awayRow.goalsFor - awayRow.goalsAgainst;
-              if (as_ > hs) { awayRow.won++; awayRow.points += 3; }
-              else if (as_ === hs) { awayRow.drawn++; awayRow.points += 1; }
-              else { awayRow.lost++; }
-            }
-          });
-
-        // Sort and assign positions
-        Object.keys(groupStandings).forEach((groupName) => {
-          groupStandings[groupName].sort((a, b) => {
-            if (b.points !== a.points) return b.points - a.points;
-            if (b.goalDifference !== a.goalDifference)
-              return b.goalDifference - a.goalDifference;
-            return b.goalsFor - a.goalsFor;
-          });
-          groupStandings[groupName].forEach((row, i) => {
-            row.position = i + 1;
+      } else if (groupMatches.length > 0) {
+        // No category groups (LEAGUE or flat format) — build a single "Klasemen" group
+        groupStandings['Klasemen'] = [];
+        cat.categoryTeams.forEach((ct) => {
+          groupStandings['Klasemen'].push({
+            position: 0,
+            teamId: ct.teamId,
+            teamName: ct.team.name,
+            teamShortName: ct.team.shortName ?? null,
+            teamLogoUrl: ct.team.logoUrl ?? null,
+            teamSlug: ct.team.slug,
+            played: 0,
+            won: 0,
+            drawn: 0,
+            lost: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            goalDifference: 0,
+            points: 0,
+            penaltyWins: 0,
+            penaltyLosses: 0,
           });
         });
       }
+
+      // Overlay completed match results (all group stage types)
+      groupMatches
+        .filter(
+          (m) =>
+            m.status === MatchStatus.COMPLETED &&
+            m.matchScore &&
+            m.homeTeamId &&
+            m.awayTeamId,
+        )
+        .forEach((m) => {
+          // Find rows — look in the match's groupName first, then fallback to any group
+          const groupName = m.groupName ?? 'Klasemen';
+          const rows = groupStandings[groupName]
+            ?? Object.values(groupStandings).find((r) => r.some((row) => row.teamId === m.homeTeamId));
+          if (!rows) return;
+
+          const hs = m.matchScore!.homeScore;
+          const as_ = m.matchScore!.awayScore;
+          const homeRow = rows.find((r) => r.teamId === m.homeTeamId);
+          const awayRow = rows.find((r) => r.teamId === m.awayTeamId);
+
+          if (homeRow) {
+            homeRow.played++;
+            homeRow.goalsFor += hs;
+            homeRow.goalsAgainst += as_;
+            homeRow.goalDifference = homeRow.goalsFor - homeRow.goalsAgainst;
+          }
+          if (awayRow) {
+            awayRow.played++;
+            awayRow.goalsFor += as_;
+            awayRow.goalsAgainst += hs;
+            awayRow.goalDifference = awayRow.goalsFor - awayRow.goalsAgainst;
+          }
+
+          if (hs > as_) {
+            if (homeRow) { homeRow.won++; homeRow.points += 3; }
+            if (awayRow) { awayRow.lost++; }
+          } else if (hs < as_) {
+            if (awayRow) { awayRow.won++; awayRow.points += 3; }
+            if (homeRow) { homeRow.lost++; }
+          } else {
+            // Draw — check penalty
+            if (penaltyEnabled && m.isPenaltyUsed) {
+              const hPen = m.homePenaltyScore ?? 0;
+              const aPen = m.awayPenaltyScore ?? 0;
+              if (hPen > aPen) {
+                if (homeRow) { homeRow.penaltyWins++; homeRow.points += 2; }
+                if (awayRow) { awayRow.penaltyLosses++; awayRow.points += 1; }
+              } else if (aPen > hPen) {
+                if (awayRow) { awayRow.penaltyWins++; awayRow.points += 2; }
+                if (homeRow) { homeRow.penaltyLosses++; homeRow.points += 1; }
+              } else {
+                if (homeRow) { homeRow.drawn++; homeRow.points += 1; }
+                if (awayRow) { awayRow.drawn++; awayRow.points += 1; }
+              }
+            } else {
+              if (homeRow) { homeRow.drawn++; homeRow.points += 1; }
+              if (awayRow) { awayRow.drawn++; awayRow.points += 1; }
+            }
+          }
+        });
+
+      // Sort and assign positions
+      Object.keys(groupStandings).forEach((groupName) => {
+        groupStandings[groupName].sort((a, b) => {
+          if (b.points !== a.points) return b.points - a.points;
+          if (b.goalDifference !== a.goalDifference)
+            return b.goalDifference - a.goalDifference;
+          return b.goalsFor - a.goalsFor;
+        });
+        groupStandings[groupName].forEach((row, i) => {
+          row.position = i + 1;
+        });
+      });
 
       // Top scorers
       const scorerMap: Record<string, {
@@ -1009,10 +1068,12 @@ export class EventsService {
         name: cat.name,
         gender: cat.gender,
         sportType: cat.sportType,
+        penaltyEnabled,
         stages: cat.stages.map((s) => ({
           stageOrder: s.stageOrder,
           stageType: s.stageType,
           groupCount: s.groupCount,
+          penaltyEnabled: s.penaltyEnabled,
         })),
         categoryGroups: cat.categoryGroups.map((cg) => ({ id: cg.id, name: cg.name })),
         teams: cat.categoryTeams.map((ct) => ({

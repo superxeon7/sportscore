@@ -64,6 +64,8 @@ interface StandingRow {
   goalsAgainst: number;
   goalDifference: number;
   points: number;
+  penaltyWins?: number;
+  penaltyLosses?: number;
 }
 
 interface TopScorer {
@@ -94,7 +96,8 @@ interface CategoryData {
   name: string;
   gender: string;
   sportType: string;
-  stages: Array<{ stageOrder: number; stageType: string; groupCount?: number | null }>;
+  penaltyEnabled?: boolean;
+  stages: Array<{ stageOrder: number; stageType: string; groupCount?: number | null; penaltyEnabled?: boolean }>;
   categoryGroups: Array<{ id: string; name: string }>;
   teams: TeamItem[];
   groupStandings: Record<string, StandingRow[]>;
@@ -229,6 +232,7 @@ const EVENT_STATUS_STYLES: Record<string, string> = {
 };
 
 const MATCH_STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  PUBLISHED: { label: 'Terjadwal', cls: 'bg-blue-500/15 text-blue-400' },
   SCHEDULED: { label: 'Terjadwal', cls: 'bg-slate-500/15 text-slate-400' },
   WARMUP: { label: 'Pemanasan', cls: 'bg-amber-500/15 text-amber-400' },
   LIVE: { label: 'LIVE', cls: 'bg-red-500/15 text-red-400 animate-pulse' },
@@ -517,25 +521,35 @@ function TurnamanTab({ categories }: { categories: CategoryData[] }) {
           (s) => s.stageType === 'DOUBLE_ELIMINATION'
         );
         const hasSwiss = cat.stages?.some((s) => s.stageType === 'SWISS');
+        const groupStageTypes = ['GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE'];
+        const hasGroupStage = cat.stages?.some((s) => groupStageTypes.includes(s.stageType));
+        const stageLabel = cat.stages?.find((s) => groupStageTypes.includes(s.stageType))?.stageType;
+        const phaseName = stageLabel === 'LEAGUE' ? 'Liga' : 'Fase Grup';
 
         return (
           <div key={cat.id}>
             <CategoryHeader category={cat} />
 
-            {/* Group standings */}
-            {hasGroups && (
+            {/* Group / League standings */}
+            {(hasGroups || hasGroupStage) && (
               <div className="mb-8 space-y-6">
-                <SectionLabel label="Fase Grup" icon={<Users className="w-4 h-4 text-slate-400" />} />
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  {Object.entries(cat.groupStandings)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([groupName, rows]) => (
-                      <div key={groupName} className="glass-card p-4">
-                        <h4 className="text-sm font-bold text-emerald-400 mb-3">{groupName}</h4>
-                        <StandingsTable rows={rows} />
-                      </div>
-                    ))}
-                </div>
+                <SectionLabel label={phaseName} icon={<Users className="w-4 h-4 text-slate-400" />} />
+                {hasGroups ? (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    {Object.entries(cat.groupStandings)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([groupName, rows]) => (
+                        <div key={groupName} className="glass-card p-4">
+                          <h4 className="text-sm font-bold text-emerald-400 mb-3">{groupName}</h4>
+                          <StandingsTable rows={rows} />
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="glass-card p-4">
+                    <p className="text-sm text-slate-500 mb-3">Belum ada data klasemen.</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -595,7 +609,7 @@ function TurnamanTab({ categories }: { categories: CategoryData[] }) {
               </div>
             )}
 
-            {!hasGroups && !hasKnockout && !hasDoubleElim && !hasSwiss && (
+            {!hasGroups && !hasGroupStage && !hasKnockout && !hasDoubleElim && !hasSwiss && (
               <EmptyState message="Pertandingan belum dimulai." />
             )}
           </div>
@@ -757,11 +771,14 @@ function PertandinganTab({
         const byGroup: Record<string, PublicMatch[]> = {};
         const knockouts: PublicMatch[] = [];
 
+        const groupStageTypes = ['GROUP', 'SPECIAL_GROUP', 'GROUP_NEIGHBOR', 'LEAGUE'];
         cat.allMatches.forEach((m) => {
-          if (m.stageType === 'GROUP') {
+          if (groupStageTypes.includes(m.stageType ?? '')) {
             const key = m.groupName ?? 'Grup';
             if (!byGroup[key]) byGroup[key] = [];
             byGroup[key].push(m);
+          } else if (m.stageType === 'SWISS') {
+            // Swiss matches are shown in their own section, skip here
           } else {
             knockouts.push(m);
           }
@@ -1428,7 +1445,7 @@ export default function PublicEventPage() {
     if (!slug) return;
     setLoading(true);
     setError(null);
-    apiGet<TournamentData>(`/events/by-slug/${slug}/tournament-data`)
+    apiGet<TournamentData>(`/events/by-slug/${slug}/tournament-data`, { cache: 'no-store' })
       .then(setData)
       .catch((e: any) => setError(e?.message || 'Gagal memuat data turnamen'))
       .finally(() => setLoading(false));
