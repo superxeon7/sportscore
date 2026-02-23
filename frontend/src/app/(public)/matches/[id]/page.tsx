@@ -197,6 +197,17 @@ export default function MatchDetailPage() {
     isConnected: liveConnected,
   } = useLiveMatch(isMatchLive ? matchId : null);
 
+  // Connection timeout — stop showing "Connecting..." after 8 seconds
+  const [connectTimedOut, setConnectTimedOut] = useState(false);
+  useEffect(() => {
+    if (!isMatchLive || liveConnected) {
+      setConnectTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setConnectTimedOut(true), 8000);
+    return () => clearTimeout(timer);
+  }, [isMatchLive, liveConnected]);
+
   // Fetch initial match data
   useEffect(() => {
     async function fetchMatch() {
@@ -228,6 +239,37 @@ export default function MatchDetailPage() {
 
     if (matchId) fetchMatch();
   }, [matchId]);
+
+  // REST polling fallback — when match is live but WebSocket isn't connected,
+  // poll every 15 seconds to keep the score updated.
+  useEffect(() => {
+    if (!isMatchLive || liveConnected || !matchId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await apiGet<Match | { data: Match }>(
+          `/matches/public/${matchId}`,
+        );
+        const matchData = (response as any).data || (response as Match);
+        setMatch(matchData);
+
+        try {
+          const eventsRes = await apiGet<MatchEvent[] | { data: MatchEvent[] }>(
+            `/matches/${matchData.id}/events`,
+          );
+          setMatchEvents(
+            Array.isArray(eventsRes) ? eventsRes : (eventsRes as any).data || [],
+          );
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [isMatchLive, liveConnected, matchId]);
 
   /* ─── Loading State ────────────────────────────────────────────── */
   if (loading) {
@@ -542,10 +584,15 @@ export default function MatchDetailPage() {
                     </span>
                     <span className="text-[11px] font-medium text-emerald-400/80">Real-time updates active</span>
                   </>
+                ) : connectTimedOut ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-slate-500" />
+                    <span className="text-[11px] font-medium text-slate-400/80">Skor diperbarui otomatis</span>
+                  </>
                 ) : (
                   <>
-                    <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                    <span className="text-[11px] font-medium text-yellow-400/80">Connecting...</span>
+                    <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+                    <span className="text-[11px] font-medium text-yellow-400/80">Menghubungkan...</span>
                   </>
                 )}
               </div>

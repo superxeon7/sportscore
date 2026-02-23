@@ -46,7 +46,7 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchLiveMatches() {
       try {
-        const response = await apiGet<any>('/matches?status=LIVE');
+        const response = await apiGet<any>('/matches/public?status=LIVE');
         setLiveMatches(Array.isArray(response) ? response : (response?.data || []));
       } catch {
         setLiveMatches([]);
@@ -57,7 +57,7 @@ export default function HomePage() {
 
     async function fetchUpcomingEvents() {
       try {
-        const response = await apiGet<any>('/events?status=PUBLISHED&limit=4');
+        const response = await apiGet<any>('/events/public?status=PUBLISHED&limit=4');
         setUpcomingEvents(Array.isArray(response) ? response : (response?.data || []));
       } catch {
         setUpcomingEvents([]);
@@ -80,6 +80,10 @@ export default function HomePage() {
     fetchLiveMatches();
     fetchUpcomingEvents();
     fetchSports();
+
+    // Poll live matches every 30 seconds to keep score updated
+    const interval = setInterval(fetchLiveMatches, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

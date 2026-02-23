@@ -18,37 +18,38 @@ export const SocketContext = createContext<SocketContextValue>({
 /**
  * Wraps the app and manages the Socket.IO connection lifecycle.
  *
- * - Connects automatically when the user has an accessToken.
- * - Disconnects when the user logs out (accessToken becomes null).
+ * - Connects with JWT auth when the user has an accessToken.
+ * - Connects as a public read-only viewer when no accessToken exists.
+ * - Disconnects and reconnects when the auth state changes.
  * - Tracks connection state reactively.
  */
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
   const [isConnected, setIsConnected] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const prevTokenRef = useRef<string | null>(null);
+  const prevTokenRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     // SSR guard
     if (typeof window === 'undefined') return;
 
-    // No token — make sure we're disconnected
-    if (!accessToken) {
-      if (prevTokenRef.current) {
-        socketClient.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
-      prevTokenRef.current = null;
-      return;
-    }
-
     // Token hasn't changed — nothing to do
     if (accessToken === prevTokenRef.current) return;
 
+    // Tear down previous connection if token changed
+    if (prevTokenRef.current !== undefined) {
+      socketClient.disconnect();
+      setSocket(null);
+      setIsConnected(false);
+    }
+
     prevTokenRef.current = accessToken;
 
-    const sock = socketClient.connect(accessToken);
+    // Connect with auth or as public viewer
+    const sock = accessToken
+      ? socketClient.connect(accessToken)
+      : socketClient.connectPublic();
+
     setSocket(sock);
 
     function onConnect() {

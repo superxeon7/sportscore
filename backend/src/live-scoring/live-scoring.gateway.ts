@@ -70,11 +70,12 @@ export class LiveScoringGateway
         );
 
       if (!token) {
-        this.logger.warn(
-          `Client ${client.id} connected without a token – disconnecting`,
+        // Allow public (read-only) connections — they can join rooms and
+        // receive broadcasts but cannot perform organizer actions.
+        client.data.isPublic = true;
+        this.logger.log(
+          `Client ${client.id} connected as public viewer (read-only)`,
         );
-        client.emit('error', { message: 'Authentication required' });
-        client.disconnect(true);
         return;
       }
 
@@ -82,16 +83,17 @@ export class LiveScoringGateway
       client.data.userId = payload.sub;
       client.data.role = payload.role;
       client.data.email = payload.email;
+      client.data.isPublic = false;
 
       this.logger.log(
         `Client ${client.id} authenticated as user ${payload.sub} (${payload.role})`,
       );
     } catch (error) {
+      // Invalid token — still allow as public read-only viewer
+      client.data.isPublic = true;
       this.logger.warn(
-        `Client ${client.id} failed authentication: ${(error as Error).message}`,
+        `Client ${client.id} failed authentication: ${(error as Error).message} — connecting as public viewer`,
       );
-      client.emit('error', { message: 'Invalid or expired token' });
-      client.disconnect(true);
     }
   }
 

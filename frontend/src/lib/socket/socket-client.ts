@@ -6,12 +6,15 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
  * Singleton Socket.IO client for the /live namespace.
  *
  * The socket is created lazily on first connect() call and reused
- * throughout the application lifetime. Auth is provided via the
- * handshake `auth.token` field.
+ * throughout the application lifetime.
+ *
+ * Supports both authenticated (with JWT token) and public (no token)
+ * connections. Public connections are read-only viewers.
  */
 class SocketClient {
   private socket: Socket | null = null;
   private currentToken: string | null = null;
+  private isPublicConnection = false;
 
   /**
    * Connect to the /live namespace with JWT authentication.
@@ -25,7 +28,7 @@ class SocketClient {
     }
 
     // Already connected with the same token
-    if (this.socket?.connected && this.currentToken === token) {
+    if (this.socket?.connected && this.currentToken === token && !this.isPublicConnection) {
       return this.socket;
     }
 
@@ -36,12 +39,52 @@ class SocketClient {
     }
 
     this.currentToken = token;
+    this.isPublicConnection = false;
 
     this.socket = io(`${WS_URL}/live`, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
+      autoConnect: true,
+    });
+
+    return this.socket;
+  }
+
+  /**
+   * Connect to the /live namespace without authentication (public viewer).
+   * Read-only — can join rooms and receive broadcasts but cannot perform
+   * organizer actions.
+   */
+  connectPublic(): Socket {
+    // SSR guard
+    if (typeof window === 'undefined') {
+      throw new Error('SocketClient.connectPublic() must only be called client-side');
+    }
+
+    // Already connected as public
+    if (this.socket?.connected && this.isPublicConnection) {
+      return this.socket;
+    }
+
+    // Tear down old socket if any
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
+    this.currentToken = null;
+    this.isPublicConnection = true;
+
+    this.socket = io(`${WS_URL}/live`, {
+      // No auth token — public read-only connection
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
       randomizationFactor: 0.5,
@@ -59,6 +102,7 @@ class SocketClient {
       this.socket.disconnect();
       this.socket = null;
       this.currentToken = null;
+      this.isPublicConnection = false;
     }
   }
 
