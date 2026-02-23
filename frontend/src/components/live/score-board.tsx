@@ -21,6 +21,9 @@ export interface ScoreBoardProps {
   currentPeriod: number;
   periodScores?: PeriodScore[];
   timerState?: TimerState | null;
+  isPenaltyShootout?: boolean;
+  homePenaltyScore?: number;
+  awayPenaltyScore?: number;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -41,6 +44,12 @@ function StatusBadge({ status }: { status: string }) {
       return (
         <Badge variant="warning" size="md">
           Jeda
+        </Badge>
+      );
+    case 'PENALTY_SHOOTOUT':
+      return (
+        <Badge variant="warning" size="md" dot>
+          Adu Penalti
         </Badge>
       );
     case 'COMPLETED':
@@ -75,6 +84,9 @@ export function ScoreBoard({
   currentPeriod,
   periodScores,
   timerState,
+  isPenaltyShootout,
+  homePenaltyScore,
+  awayPenaltyScore,
 }: ScoreBoardProps) {
   const [homeAnimating, setHomeAnimating] = useState(false);
   const [awayAnimating, setAwayAnimating] = useState(false);
@@ -101,7 +113,7 @@ export function ScoreBoard({
   }, [score.awayScore]);
 
   const isLive =
-    status === 'LIVE' || status === 'HALF_TIME' || status === 'PAUSED';
+    status === 'LIVE' || status === 'HALF_TIME' || status === 'PAUSED' || status === 'PENALTY_SHOOTOUT';
 
   return (
     <div className="relative rounded-2xl overflow-hidden">
@@ -172,6 +184,22 @@ export function ScoreBoard({
             </p>
           </div>
         </div>
+
+        {/* Penalty Score Row */}
+        {isPenaltyShootout && (
+          <div className="mt-4 flex justify-center">
+            <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25">
+              <span className="text-xs text-amber-400 uppercase tracking-wider font-bold">Penalti</span>
+              <span className="text-xl font-black tabular-nums text-amber-300">
+                {homePenaltyScore ?? 0}
+              </span>
+              <span className="text-sm text-amber-600">:</span>
+              <span className="text-xl font-black tabular-nums text-amber-300">
+                {awayPenaltyScore ?? 0}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Period Scores Row */}
         {periodScores && periodScores.length > 0 && (

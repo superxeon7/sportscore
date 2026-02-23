@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { MatchStatus } from '@/lib/types';
+import type { MatchStatus, PenaltyShot } from '@/lib/types';
 
 /**
  * Score state matching the backend ScoreState interface.
@@ -69,6 +69,8 @@ export interface MatchState {
   startedAt: string | Date | null;
   timerState: TimerState | null;
   sportSlug?: string;
+  isPenaltyShootout?: boolean;
+  penaltyShots?: PenaltyShot[];
 }
 
 interface LiveMatchState {

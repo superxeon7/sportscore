@@ -158,9 +158,15 @@ export interface MatchEventRecord {
   awayScoreSnapshot: number | null;
 }
 
+export interface PenaltyShot {
+  round: number;
+  team: 'home' | 'away';
+  result: 'GOAL' | 'MISS';
+}
+
 export interface MatchState {
   matchId: string;
-  status: MatchStatus;
+  status: MatchStatus | string;
   currentPeriod: number;
   score: ScoreState;
   events: MatchEventRecord[];
@@ -171,6 +177,10 @@ export interface MatchState {
   timerState: TimerState | null;
   /** Sport slug for the match (e.g. "football", "futsal"). */
   sportSlug: string;
+  /** Whether the match is currently in penalty shootout mode. */
+  isPenaltyShootout?: boolean;
+  /** Individual penalty kicks recorded during shootout. */
+  penaltyShots?: PenaltyShot[];
 }
 
 // ---------------------------------------------------------------------------

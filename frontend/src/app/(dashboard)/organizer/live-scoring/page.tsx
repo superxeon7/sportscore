@@ -10,6 +10,7 @@ import { ScoreBoard } from '@/components/live/score-board';
 import { EventLog } from '@/components/live/event-log';
 import { ScoringPanel } from '@/components/live/scoring-panel';
 import { MatchControls } from '@/components/live/match-controls';
+import { PenaltyShootoutPanel } from '@/components/live/penalty-shootout-panel';
 import { useLiveMatch } from '@/hooks/use-live-match';
 import type { Player } from '@/lib/types';
 
@@ -196,6 +197,10 @@ export default function LiveScoringPage() {
     setAddedTime,
     setTimerDirection,
     adjustTimer,
+    addPenaltyKick,
+    undoPenaltyKick,
+    resetPenalty,
+    finishPenaltyMatch,
   } = useLiveMatch(selectedMatchId);
 
   // ── Fetch: Events ──
@@ -389,8 +394,13 @@ export default function LiveScoringPage() {
   const homeTeamId = matchState?.homeTeamId ?? selectedMatchMeta?.homeTeamId ?? '';
   const awayTeamId = matchState?.awayTeamId ?? selectedMatchMeta?.awayTeamId ?? '';
 
+  const isPenaltyShootout = matchState?.isPenaltyShootout || status === 'PENALTY_SHOOTOUT';
+  const penaltyShots = matchState?.penaltyShots ?? [];
+  const homePenaltyScore = matchState?.score?.penaltyScores?.home ?? 0;
+  const awayPenaltyScore = matchState?.score?.penaltyScores?.away ?? 0;
+
   const isLiveStatus =
-    status === 'LIVE' || status === 'HALF_TIME' || status === 'PAUSED';
+    status === 'LIVE' || status === 'HALF_TIME' || (status === 'PAUSED' && !isPenaltyShootout);
 
   const isCompletedStatus = status === 'COMPLETED';
 
@@ -768,6 +778,9 @@ export default function LiveScoringPage() {
                 currentPeriod={currentPeriod}
                 periodScores={matchState?.score?.periodScores}
                 timerState={matchState?.timerState}
+                isPenaltyShootout={isPenaltyShootout}
+                homePenaltyScore={homePenaltyScore}
+                awayPenaltyScore={awayPenaltyScore}
               />
 
               {/* Time Config — subtle info bar */}
@@ -799,6 +812,7 @@ export default function LiveScoringPage() {
                 <MatchControls
                   matchId={selectedMatchId}
                   status={status}
+                  isPenaltyShootout={isPenaltyShootout}
                   onStartMatch={startMatch}
                   onEndMatch={endMatch}
                   onStartPeriod={() => startPeriod()}
@@ -813,9 +827,29 @@ export default function LiveScoringPage() {
               </Card>
             </div>
 
-            {/* Right Column (1/3): Scoring Panel + Undo */}
+            {/* Right Column (1/3): Scoring Panel / Penalty Panel + Undo */}
             <div className="space-y-4">
-              {isLiveStatus && (
+              {/* Penalty Shootout Panel */}
+              {isPenaltyShootout && (
+                <Card className="p-5">
+                  <PenaltyShootoutPanel
+                    homeTeamName={homeName}
+                    awayTeamName={awayName}
+                    homeScore={homeScore}
+                    awayScore={awayScore}
+                    penaltyShots={penaltyShots}
+                    homePenaltyScore={homePenaltyScore}
+                    awayPenaltyScore={awayPenaltyScore}
+                    onAddKick={addPenaltyKick}
+                    onUndoKick={undoPenaltyKick}
+                    onReset={resetPenalty}
+                    onFinish={finishPenaltyMatch}
+                  />
+                </Card>
+              )}
+
+              {/* Normal Scoring Panel (hidden during penalty) */}
+              {isLiveStatus && !isPenaltyShootout && (
                 <Card className="p-5">
                   <ScoringPanel
                     sportSlug={sportSlug}
@@ -848,8 +882,8 @@ export default function LiveScoringPage() {
                 </Card>
               )}
 
-              {/* Placeholder when not live */}
-              {!isLiveStatus && (
+              {/* Placeholder when not live and not in penalty */}
+              {!isLiveStatus && !isPenaltyShootout && !isCompletedStatus && (
                 <Card className="p-8">
                   <div className="flex flex-col items-center text-center py-4">
                     <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700/50 flex items-center justify-center mb-3">

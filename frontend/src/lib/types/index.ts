@@ -35,6 +35,7 @@ export enum MatchStatus {
   LIVE = 'LIVE',
   HALF_TIME = 'HALF_TIME',
   PAUSED = 'PAUSED',
+  PENALTY_SHOOTOUT = 'PENALTY_SHOOTOUT',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
   POSTPONED = 'POSTPONED',
@@ -157,6 +158,12 @@ export interface Match {
   matchScore?: MatchScore;
   matchEvents?: MatchEvent[];
   tournament?: Tournament;
+}
+
+export interface PenaltyShot {
+  round: number;
+  team: 'home' | 'away';
+  result: 'GOAL' | 'MISS';
 }
 
 export interface MatchScore {

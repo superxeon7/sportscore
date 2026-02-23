@@ -243,6 +243,31 @@ export function useLiveMatch(matchId: string | null) {
     [socket, matchId],
   );
 
+  // ---- Penalty emitters ----
+
+  const addPenaltyKick = useCallback(
+    (team: 'home' | 'away', result: 'GOAL' | 'MISS') => {
+      if (!socket || !matchId) return;
+      socket.emit('match:penalty-kick', { matchId, team, result });
+    },
+    [socket, matchId],
+  );
+
+  const undoPenaltyKick = useCallback(() => {
+    if (!socket || !matchId) return;
+    socket.emit('match:penalty-undo', { matchId });
+  }, [socket, matchId]);
+
+  const resetPenalty = useCallback(() => {
+    if (!socket || !matchId) return;
+    socket.emit('match:penalty-reset', { matchId });
+  }, [socket, matchId]);
+
+  const finishPenaltyMatch = useCallback(() => {
+    if (!socket || !matchId) return;
+    socket.emit('match:penalty-finish', { matchId });
+  }, [socket, matchId]);
+
   return {
     matchState,
     isConnected,
@@ -258,5 +283,9 @@ export function useLiveMatch(matchId: string | null) {
     setAddedTime,
     setTimerDirection,
     adjustTimer,
+    addPenaltyKick,
+    undoPenaltyKick,
+    resetPenalty,
+    finishPenaltyMatch,
   };
 }

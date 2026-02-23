@@ -469,6 +469,87 @@ export class LiveScoringGateway
     }
   }
 
+  @SubscribeMessage('match:penalty-kick')
+  async handlePenaltyKick(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { matchId: string; team: 'home' | 'away'; result: 'GOAL' | 'MISS' },
+  ): Promise<void> {
+    const { matchId, team, result } = payload;
+    if (!matchId) throw new WsException('matchId is required');
+    if (!team || !result) throw new WsException('team and result are required');
+
+    await this.assertMatchOwner(client, matchId);
+
+    try {
+      const state = await this.liveScoringService.addPenaltyKick(matchId, team, result);
+      this.server.to(`match:${matchId}`).emit('match:state', state);
+    } catch (error) {
+      throw new WsException(
+        `Failed to record penalty kick: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  @SubscribeMessage('match:penalty-undo')
+  async handlePenaltyUndo(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { matchId: string },
+  ): Promise<void> {
+    const { matchId } = payload;
+    if (!matchId) throw new WsException('matchId is required');
+
+    await this.assertMatchOwner(client, matchId);
+
+    try {
+      const state = await this.liveScoringService.undoLastPenaltyKick(matchId);
+      this.server.to(`match:${matchId}`).emit('match:state', state);
+    } catch (error) {
+      throw new WsException(
+        `Failed to undo penalty kick: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  @SubscribeMessage('match:penalty-reset')
+  async handlePenaltyReset(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { matchId: string },
+  ): Promise<void> {
+    const { matchId } = payload;
+    if (!matchId) throw new WsException('matchId is required');
+
+    await this.assertMatchOwner(client, matchId);
+
+    try {
+      const state = await this.liveScoringService.resetPenalty(matchId);
+      this.server.to(`match:${matchId}`).emit('match:state', state);
+    } catch (error) {
+      throw new WsException(
+        `Failed to reset penalty: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  @SubscribeMessage('match:penalty-finish')
+  async handlePenaltyFinish(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { matchId: string },
+  ): Promise<void> {
+    const { matchId } = payload;
+    if (!matchId) throw new WsException('matchId is required');
+
+    await this.assertMatchOwner(client, matchId);
+
+    try {
+      const state = await this.liveScoringService.finishPenaltyMatch(matchId);
+      this.server.to(`match:${matchId}`).emit('match:state', state);
+    } catch (error) {
+      throw new WsException(
+        `Failed to finish penalty match: ${(error as Error).message}`,
+      );
+    }
+  }
+
   // -------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------

@@ -15,6 +15,7 @@ import { StandingsService } from '../standings/standings.service';
 import {
   MatchEventRecord,
   MatchState,
+  PenaltyShot,
   ScoreState,
   ScoringResult,
   SportConfig,
@@ -130,9 +131,15 @@ export class LiveScoringService {
 
     const sport = match.tournament.event.sport;
 
+    // Determine virtual status: PAUSED + isPenaltyUsed → PENALTY_SHOOTOUT
+    let virtualStatus: string = match.status;
+    if (match.status === MatchStatus.PAUSED && match.isPenaltyUsed) {
+      virtualStatus = 'PENALTY_SHOOTOUT';
+    }
+
     const state: MatchState = {
       matchId: match.id,
-      status: match.status,
+      status: virtualStatus as any,
       currentPeriod: match.currentPeriod,
       score,
       events,
@@ -141,6 +148,8 @@ export class LiveScoringService {
       startedAt: match.startedAt,
       timerState: null,
       sportSlug: sport.slug,
+      isPenaltyShootout: match.status === MatchStatus.PAUSED && match.isPenaltyUsed,
+      penaltyShots: (penaltyScores.shots as any[]) ?? [],
     };
 
     // Warm the cache.
@@ -297,7 +306,7 @@ export class LiveScoringService {
   }
 
   /**
-   * End a match – set status to COMPLETED.
+   * End a match – set status to COMPLETED, or enter PENALTY_SHOOTOUT if draw + penalty enabled.
    */
   async endMatch(matchId: string): Promise<MatchState> {
     const match = await this.prisma.match.findUnique({
@@ -323,15 +332,48 @@ export class LiveScoringService {
       where: { matchId },
     });
 
+    const homeScore = scoreRecord?.homeScore ?? 0;
+    const awayScore = scoreRecord?.awayScore ?? 0;
+    const isDraw = homeScore === awayScore;
+
+    // If it's a draw and not already in penalty mode, check if penalty is enabled
+    if (isDraw && !match.isPenaltyUsed) {
+      const penaltyEnabled = await this.isPenaltyEnabledForMatch(matchId);
+      if (penaltyEnabled) {
+        // Enter penalty shootout mode
+        await this.prisma.match.update({
+          where: { id: matchId },
+          data: {
+            status: MatchStatus.PAUSED,
+            isPenaltyUsed: true,
+          },
+        });
+
+        // Initialize penalty scores in MatchScore
+        if (scoreRecord) {
+          await this.prisma.matchScore.update({
+            where: { matchId },
+            data: {
+              penaltyScores: { shots: [], home: 0, away: 0 },
+            },
+          });
+        }
+
+        await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+        const state = await this.getMatchState(matchId);
+        state.timerState = null;
+        await this.cacheMatchState(matchId, state);
+        return state;
+      }
+    }
+
+    // Normal completion flow
     // Compute winnerTeamId from regular-time score
     let winnerTeamId: string | null = null;
-    if (scoreRecord) {
-      if (scoreRecord.homeScore > scoreRecord.awayScore) {
-        winnerTeamId = match.homeTeamId;
-      } else if (scoreRecord.awayScore > scoreRecord.homeScore) {
-        winnerTeamId = match.awayTeamId;
-      }
-      // null = draw in regular time
+    if (homeScore > awayScore) {
+      winnerTeamId = match.homeTeamId;
+    } else if (awayScore > homeScore) {
+      winnerTeamId = match.awayTeamId;
     }
 
     // Compute penaltyWinnerTeamId from penalty shootout scores
@@ -379,6 +421,39 @@ export class LiveScoringService {
     );
 
     return state;
+  }
+
+  /**
+   * Check if penalty shootout is enabled for a match's stage.
+   */
+  async isPenaltyEnabledForMatch(matchId: string): Promise<boolean> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: {
+        eventCategory: {
+          include: {
+            stages: true,
+          },
+        },
+      },
+    });
+
+    if (!match?.eventCategory?.stages) return false;
+
+    // Find the stage that matches this match's stageType
+    const matchStageType = match.stageType;
+    for (const stage of match.eventCategory.stages) {
+      if (matchStageType && stage.stageType === matchStageType) {
+        return stage.penaltyEnabled ?? false;
+      }
+      // KNOCKOUT stages always have penalty enabled
+      if (stage.stageType === 'KNOCKOUT') {
+        return true;
+      }
+    }
+
+    // If no stageType on match, check if any stage has penalty enabled
+    return match.eventCategory.stages.some((s: any) => s.penaltyEnabled);
   }
 
   // -------------------------------------------------------------------
@@ -860,7 +935,7 @@ export class LiveScoringService {
   // -------------------------------------------------------------------
 
   /**
-   * Set penalty shootout scores for a match.
+   * Set penalty shootout scores for a match (legacy aggregate method).
    * Updates the Match record and marks isPenaltyUsed = true.
    */
   async setPenaltyScore(
@@ -889,5 +964,236 @@ export class LiveScoringService {
     await this.redis.del(`${CACHE_PREFIX}${matchId}`);
 
     return { homePenaltyScore, awayPenaltyScore, isPenaltyUsed: true };
+  }
+
+  /**
+   * Add a single penalty kick to the shootout.
+   */
+  async addPenaltyKick(
+    matchId: string,
+    team: 'home' | 'away',
+    result: 'GOAL' | 'MISS',
+  ): Promise<MatchState> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: { matchScore: true },
+    });
+
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    if (!match.isPenaltyUsed || match.status !== MatchStatus.PAUSED) {
+      throw new BadRequestException('Match is not in penalty shootout mode');
+    }
+
+    const penaltyScores = (match.matchScore?.penaltyScores as any) ?? { shots: [], home: 0, away: 0 };
+    const shots: PenaltyShot[] = penaltyScores.shots ?? [];
+
+    // Determine the round number
+    const teamShots = shots.filter((s) => s.team === team);
+    const round = teamShots.length + 1;
+
+    shots.push({ round, team, result });
+
+    // Recalculate aggregates
+    const homeGoals = shots.filter((s) => s.team === 'home' && s.result === 'GOAL').length;
+    const awayGoals = shots.filter((s) => s.team === 'away' && s.result === 'GOAL').length;
+
+    const newPenaltyScores = { shots, home: homeGoals, away: awayGoals };
+
+    // Update MatchScore
+    await this.prisma.matchScore.update({
+      where: { matchId },
+      data: { penaltyScores: newPenaltyScores as any },
+    });
+
+    // Update Match aggregate fields
+    await this.prisma.match.update({
+      where: { id: matchId },
+      data: {
+        homePenaltyScore: homeGoals,
+        awayPenaltyScore: awayGoals,
+      },
+    });
+
+    await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+    const state = await this.getMatchState(matchId);
+    state.timerState = null;
+    await this.cacheMatchState(matchId, state);
+    return state;
+  }
+
+  /**
+   * Undo the last penalty kick.
+   */
+  async undoLastPenaltyKick(matchId: string): Promise<MatchState> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: { matchScore: true },
+    });
+
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    if (!match.isPenaltyUsed) {
+      throw new BadRequestException('Match is not in penalty shootout mode');
+    }
+
+    const penaltyScores = (match.matchScore?.penaltyScores as any) ?? { shots: [], home: 0, away: 0 };
+    const shots: PenaltyShot[] = penaltyScores.shots ?? [];
+
+    if (shots.length === 0) {
+      throw new BadRequestException('No penalty kicks to undo');
+    }
+
+    shots.pop();
+
+    const homeGoals = shots.filter((s) => s.team === 'home' && s.result === 'GOAL').length;
+    const awayGoals = shots.filter((s) => s.team === 'away' && s.result === 'GOAL').length;
+
+    const newPenaltyScores = { shots, home: homeGoals, away: awayGoals };
+
+    await this.prisma.matchScore.update({
+      where: { matchId },
+      data: { penaltyScores: newPenaltyScores as any },
+    });
+
+    await this.prisma.match.update({
+      where: { id: matchId },
+      data: {
+        homePenaltyScore: homeGoals,
+        awayPenaltyScore: awayGoals,
+      },
+    });
+
+    await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+    const state = await this.getMatchState(matchId);
+    state.timerState = null;
+    await this.cacheMatchState(matchId, state);
+    return state;
+  }
+
+  /**
+   * Reset all penalty data for a match (back to start of shootout).
+   */
+  async resetPenalty(matchId: string): Promise<MatchState> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: { matchScore: true },
+    });
+
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    if (!match.isPenaltyUsed) {
+      throw new BadRequestException('Match is not in penalty shootout mode');
+    }
+
+    const newPenaltyScores = { shots: [], home: 0, away: 0 };
+
+    if (match.matchScore) {
+      await this.prisma.matchScore.update({
+        where: { matchId },
+        data: { penaltyScores: newPenaltyScores as any },
+      });
+    }
+
+    await this.prisma.match.update({
+      where: { id: matchId },
+      data: {
+        homePenaltyScore: 0,
+        awayPenaltyScore: 0,
+      },
+    });
+
+    await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+    const state = await this.getMatchState(matchId);
+    state.timerState = null;
+    await this.cacheMatchState(matchId, state);
+    return state;
+  }
+
+  /**
+   * Finish a match that's in penalty shootout mode.
+   * Validates there's a clear winner, then completes the match.
+   */
+  async finishPenaltyMatch(matchId: string): Promise<MatchState> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: { matchScore: true },
+    });
+
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    if (!match.isPenaltyUsed || match.status !== MatchStatus.PAUSED) {
+      throw new BadRequestException('Match is not in penalty shootout mode');
+    }
+
+    const hPen = match.homePenaltyScore ?? 0;
+    const aPen = match.awayPenaltyScore ?? 0;
+
+    if (hPen === aPen) {
+      throw new BadRequestException('Penalty shootout is still a draw – cannot finish yet');
+    }
+
+    // Determine winner
+    const scoreRecord = match.matchScore;
+    const homeScore = scoreRecord?.homeScore ?? 0;
+    const awayScore = scoreRecord?.awayScore ?? 0;
+
+    // Regular-time winner (may be null = draw)
+    let winnerTeamId: string | null = null;
+    if (homeScore > awayScore) {
+      winnerTeamId = match.homeTeamId;
+    } else if (awayScore > homeScore) {
+      winnerTeamId = match.awayTeamId;
+    }
+
+    // Penalty winner
+    let penaltyWinnerTeamId: string | null = null;
+    if (hPen > aPen) penaltyWinnerTeamId = match.homeTeamId;
+    else penaltyWinnerTeamId = match.awayTeamId;
+
+    await this.prisma.match.update({
+      where: { id: matchId },
+      data: {
+        status: MatchStatus.COMPLETED,
+        endedAt: new Date(),
+        winnerTeamId,
+        penaltyWinnerTeamId,
+      },
+    });
+
+    await this.redis.del(`${CACHE_PREFIX}${matchId}`);
+    const state = await this.getMatchState(matchId);
+    state.timerState = null;
+    await this.cacheMatchState(matchId, state);
+
+    // Auto-generate POTM (non-blocking)
+    this.matchesService.autoGeneratePotm(matchId).catch((err) =>
+      this.logger.error(`POTM auto-generate failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-advance bracket (non-blocking)
+    this.bracketAdvancement.advanceFromMatch(matchId).catch((err) =>
+      this.logger.error(`Bracket advancement failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-complete Swiss round (non-blocking)
+    this.swissSystemService.checkRoundCompletion(matchId).catch((err) =>
+      this.logger.error(`Swiss round completion check failed for match ${matchId}: ${err?.message}`),
+    );
+
+    // Auto-update standings (non-blocking)
+    this.standingsService.recalculateForMatch(matchId).catch((err) =>
+      this.logger.error(`Standings update failed for match ${matchId}: ${err?.message}`),
+    );
+
+    return state;
   }
 }

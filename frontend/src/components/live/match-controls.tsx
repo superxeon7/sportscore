@@ -9,6 +9,7 @@ import type { TimerState } from '@/lib/stores/live-match.store';
 export interface MatchControlsProps {
   matchId: string;
   status: string;
+  isPenaltyShootout?: boolean;
   onStartMatch: () => void;
   onEndMatch: () => void;
   onStartPeriod: () => void;
@@ -31,6 +32,7 @@ export interface MatchControlsProps {
 export function MatchControls({
   matchId,
   status,
+  isPenaltyShootout,
   onStartMatch,
   onEndMatch,
   onStartPeriod,
@@ -113,8 +115,18 @@ export function MatchControls({
             </>
           )}
 
-          {/* HALF_TIME / PAUSED: Start Period, Resume */}
-          {(status === 'HALF_TIME' || status === 'PAUSED') && (
+          {/* PENALTY_SHOOTOUT: informational only — controls are in PenaltyShootoutPanel */}
+          {(status === 'PENALTY_SHOOTOUT' || isPenaltyShootout) && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/25 w-full">
+              <span className="text-amber-400 text-base">&#9917;</span>
+              <p className="text-sm text-amber-300 font-medium">
+                Adu penalti sedang berlangsung — gunakan panel penalti untuk mencatat tendangan
+              </p>
+            </div>
+          )}
+
+          {/* HALF_TIME / PAUSED (non-penalty): Start Period, Resume */}
+          {(status === 'HALF_TIME' || (status === 'PAUSED' && !isPenaltyShootout)) && (
             <>
               <Button
                 size="lg"
